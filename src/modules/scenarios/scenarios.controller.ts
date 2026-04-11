@@ -8,10 +8,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ScenariosService } from './scenarios.service';
-import { GenerateScenarioDto, SaveScenarioDto } from './dto/scenario.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import type { CurrentUserData } from '../common/decorators/current-user.decorator';
+import {
+  GenerateScenarioRequest,
+  SaveScenarioRequest,
+} from './models/scenario.request';
+import {
+  GenerateScenarioResponse,
+  ScenarioResponse,
+  ScenarioWithProject,
+} from './models/scenario.response';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('scenarios')
@@ -20,25 +28,25 @@ export class ScenariosController {
 
   @Post('generate')
   generate(
-    @Body() dto: GenerateScenarioDto,
+    @Body() request: GenerateScenarioRequest,
     @CurrentUser() user: CurrentUserData,
-  ) {
-    return this.scenariosService.generate(dto, user.id);
+  ): Promise<GenerateScenarioResponse> {
+    return this.scenariosService.generate(request, user.id);
   }
 
   @Post()
   save(
-    @Body() dto: SaveScenarioDto,
+    @Body() request: SaveScenarioRequest,
     @CurrentUser() user: CurrentUserData,
-  ) {
-    return this.scenariosService.save(dto, user.id);
+  ): Promise<ScenarioResponse> {
+    return this.scenariosService.save(request, user.id);
   }
 
   @Get('project/:projectId')
   findByProject(
     @Param('projectId') projectId: string,
     @CurrentUser() user: CurrentUserData,
-  ) {
+  ): Promise<ScenarioResponse[]> {
     return this.scenariosService.findByProject(projectId, user.id);
   }
 
@@ -46,7 +54,7 @@ export class ScenariosController {
   findOne(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
-  ) {
+  ): Promise<ScenarioWithProject> {
     return this.scenariosService.findOne(id, user.id);
   }
 
@@ -54,7 +62,7 @@ export class ScenariosController {
   remove(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
-  ) {
+  ): Promise<{ message: string }> {
     return this.scenariosService.remove(id, user.id);
   }
 }

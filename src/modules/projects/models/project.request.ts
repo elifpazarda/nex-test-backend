@@ -1,6 +1,6 @@
 import { IsString, IsOptional, MinLength, MaxLength } from 'class-validator';
 
-export class CreateProjectDto {
+export class CreateProjectRequest {
   @IsString()
   @MinLength(2)
   @MaxLength(100)
@@ -12,7 +12,7 @@ export class CreateProjectDto {
   description?: string;
 }
 
-export class UpdateProjectDto {
+export class UpdateProjectRequest {
   @IsString()
   @IsOptional()
   @MinLength(2)

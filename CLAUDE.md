@@ -47,21 +47,28 @@ src/
   common/
     guards/            # JwtAuthGuard
     decorators/        # @CurrentUser() decorator
-  auth/
-    dto/               # RegisterDto, LoginDto
-    auth.service.ts    # Register, login, me, token generation
-    auth.controller.ts # /auth endpoints
-    jwt.strategy.ts    # Passport JWT strategy
-  projects/
-    dto/               # CreateProjectDto, UpdateProjectDto
-    projects.service.ts
-    projects.controller.ts
-  scenarios/
-    dto/               # GenerateScenarioDto, SaveScenarioDto
-    scenarios.service.ts  # AI entegrasyonu burada
-    scenarios.controller.ts
-  ai/
-    ai.service.ts      # Anthropic SDK: senaryo uret, BDD donustur, kalite degerlendir
+  modules/
+    auth/
+      models/
+        auth.request.ts    # RegisterRequest, LoginRequest
+        auth.response.ts   # UserResponse, AuthTokens
+      auth.service.ts      # Register, login, me, token generation
+      auth.controller.ts
+      jwt.strategy.ts      # Passport JWT strategy
+    projects/
+      models/
+        project.request.ts  # CreateProjectRequest, UpdateProjectRequest
+        project.response.ts # ProjectResponse, ProjectWithCount
+      projects.service.ts
+      projects.controller.ts
+    scenarios/
+      models/
+        scenario.request.ts    # GenerateScenarioRequest, SaveScenarioRequest
+        scenario.response.ts # ScenarioResponse, ScenarioWithProject
+      scenarios.service.ts   # AI entegrasyonu burada
+      scenarios.controller.ts
+    ai/
+      ai.service.ts          # Anthropic SDK: senaryo uret, BDD donustur, kalite degerlendir
 ```
 
 ## API Endpointleri
@@ -89,11 +96,16 @@ Tum endpointler `/api` prefix'i altinda.
 
 - TypeScript strict mode, `noImplicitAny` dikkat
 - NestJS dependency injection kullan, manual instantiation yapma
-- DTO'larda class-validator decorator'lari zorunlu
+- Request class'larinda class-validator decorator'lari zorunlu
+- Veri katmanlari:
+  - **Request** (`*.request.ts`): Client → API, input verisi (class + class-validator)
+  - **Entity**: API ↔ DB, Prisma schema tarafindan tanimlanir (`prisma/schema.prisma`)
+  - **Response** (`*.response.ts`): API → Client, output verisi (interface)
 - Service katmaninda is mantigi, controller'da sadece routing
 - Prisma sorgularinda `select` veya `include` ile gereksiz veri cekme
+- Tum fonksiyonlarda return tipi acikca yazilmali (type inference'a birakilmamali)
 - Interface tercih et, type sadece union/intersection icin
-- Her modul kendi dto/ klasorune sahip
+- Her modul kendi models/ klasorune sahip (request.ts = input, response.ts = output)
 - Guard'lar common/guards/ altinda, decorator'lar common/decorators/ altinda
 
 ## Git Workflow
@@ -105,7 +117,7 @@ Tum endpointler `/api` prefix'i altinda.
 
 ## Yeni Endpoint Ekleme Adimlari
 
-1. `dto/` altinda DTO sinifi olustur (class-validator ile)
+1. `models/` altinda Request sinifi olustur (class-validator ile) ve Response interface'i tanimla
 2. Service'e is mantigi methodunu ekle
 3. Controller'a route handler ekle (@UseGuards, @Body, @Param)
 4. Gerekirse module'a import/provider ekle

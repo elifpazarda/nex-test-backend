@@ -3,10 +3,18 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { ProjectsService } from '../projects/projects.service';
-import { GenerateScenarioDto, SaveScenarioDto } from './dto/scenario.dto';
+import {
+  GenerateScenarioRequest,
+  SaveScenarioRequest,
+} from './models/scenario.request';
+import {
+  GenerateScenarioResponse,
+  ScenarioResponse,
+  ScenarioWithProject,
+} from './models/scenario.response';
 
 @Injectable()
 export class ScenariosService {
@@ -16,13 +24,15 @@ export class ScenariosService {
     private projectsService: ProjectsService,
   ) {}
 
-  async generate(dto: GenerateScenarioDto, userId: string) {
-    await this.projectsService.findOne(dto.projectId, userId);
+  async generate(
+    request: GenerateScenarioRequest,
+    userId: string,
+  ): Promise<GenerateScenarioResponse> {
+    await this.projectsService.findOne(request.projectId, userId);
 
-    const rawOutput = await this.aiService.generateTestScenario(dto.input);
+    const rawOutput = await this.aiService.generateTestScenario(request.input);
     const bddOutput = await this.aiService.convertToBdd(rawOutput);
-    const { score, feedback } =
-      await this.aiService.evaluateQuality(rawOutput);
+    const { score, feedback } = await this.aiService.evaluateQuality(rawOutput);
 
     return {
       rawOutput,
@@ -32,22 +42,28 @@ export class ScenariosService {
     };
   }
 
-  async save(dto: SaveScenarioDto, userId: string) {
-    await this.projectsService.findOne(dto.projectId, userId);
+  async save(
+    request: SaveScenarioRequest,
+    userId: string,
+  ): Promise<ScenarioResponse> {
+    await this.projectsService.findOne(request.projectId, userId);
     return this.prisma.testScenario.create({
       data: {
-        title: dto.title,
-        input: dto.input,
-        rawOutput: dto.rawOutput,
-        bddOutput: dto.bddOutput,
-        qualityScore: dto.qualityScore,
-        qualityFeedback: dto.qualityFeedback ?? '',
-        projectId: dto.projectId,
+        title: request.title,
+        input: request.input,
+        rawOutput: request.rawOutput,
+        bddOutput: request.bddOutput,
+        qualityScore: request.qualityScore,
+        qualityFeedback: request.qualityFeedback ?? '',
+        projectId: request.projectId,
       },
     });
   }
 
-  async findByProject(projectId: string, userId: string) {
+  async findByProject(
+    projectId: string,
+    userId: string,
+  ): Promise<ScenarioResponse[]> {
     await this.projectsService.findOne(projectId, userId);
     return this.prisma.testScenario.findMany({
       where: { projectId },
@@ -55,7 +71,7 @@ export class ScenariosService {
     });
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, userId: string): Promise<ScenarioWithProject> {
     const scenario = await this.prisma.testScenario.findUnique({
       where: { id },
       include: { project: true },
@@ -66,7 +82,7 @@ export class ScenariosService {
     return scenario;
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, userId: string): Promise<{ message: string }> {
     await this.findOne(id, userId);
     await this.prisma.testScenario.delete({ where: { id } });
     return { message: 'Senaryo silindi' };

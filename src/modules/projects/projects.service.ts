@@ -3,14 +3,18 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import {
+  CreateProjectRequest,
+  UpdateProjectRequest,
+} from './models/project.request';
+import { ProjectResponse, ProjectWithCount } from './models/project.response';
 
 @Injectable()
 export class ProjectsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(userId: string) {
+  async findAll(userId: string): Promise<ProjectWithCount[]> {
     return this.prisma.project.findMany({
       where: { userId },
       include: { _count: { select: { scenarios: true } } },
@@ -18,7 +22,7 @@ export class ProjectsService {
     });
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, userId: string): Promise<ProjectResponse> {
     const project = await this.prisma.project.findUnique({ where: { id } });
     if (!project) throw new NotFoundException('Proje bulunamadı');
     if (project.userId !== userId)
@@ -26,16 +30,23 @@ export class ProjectsService {
     return project;
   }
 
-  async create(userId: string, dto: CreateProjectDto) {
-    return this.prisma.project.create({ data: { ...dto, userId } });
+  async create(
+    userId: string,
+    request: CreateProjectRequest,
+  ): Promise<ProjectResponse> {
+    return this.prisma.project.create({ data: { ...request, userId } });
   }
 
-  async update(id: string, userId: string, dto: UpdateProjectDto) {
+  async update(
+    id: string,
+    userId: string,
+    request: UpdateProjectRequest,
+  ): Promise<ProjectResponse> {
     await this.findOne(id, userId);
-    return this.prisma.project.update({ where: { id }, data: dto });
+    return this.prisma.project.update({ where: { id }, data: request });
   }
 
-  async remove(id: string, userId: string) {
+  async remove(id: string, userId: string): Promise<{ message: string }> {
     await this.findOne(id, userId);
     await this.prisma.project.delete({ where: { id } });
     return { message: 'Proje silindi' };

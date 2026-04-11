@@ -80,7 +80,7 @@ ${rawScenario}`,
     try {
       const text =
         response.content[0].type === 'text' ? response.content[0].text : '{}';
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(text) as { score?: number; feedback?: string };
       return { score: parsed.score ?? 50, feedback: parsed.feedback ?? '' };
     } catch {
       return { score: 50, feedback: 'Değerlendirme yapılamadı' };

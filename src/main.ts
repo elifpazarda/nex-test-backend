@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(
@@ -25,4 +25,4 @@ async function bootstrap() {
   console.log(`Backend running on http://localhost:${port}/api`);
 }
 
-bootstrap();
+void bootstrap();

@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
-import { AuthModule } from './auth/auth.module';
-import { ProjectsModule } from './projects/projects.module';
-import { ScenariosModule } from './scenarios/scenarios.module';
-import { AiModule } from './ai/ai.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { ScenariosModule } from './modules/scenarios/scenarios.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
