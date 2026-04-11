@@ -6,6 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { DateUtil } from '../utils/date.util';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -26,7 +27,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     response.status(statusCode).json({
       success: false,
-      timestamp: new Date().toISOString(),
+      timestamp: DateUtil.now(),
       path: request.url,
       error: {
         statusCode,
