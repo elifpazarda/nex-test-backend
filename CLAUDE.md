@@ -42,11 +42,15 @@ npx prisma db push                     # Schema'yi DB'ye push et (dev)
 ```
 src/
   main.ts              # Bootstrap: ValidationPipe, CORS, /api prefix, port 3001
+                       # Global: ResponseInterceptor, HttpExceptionFilter
   app.module.ts        # Root module (ConfigModule global)
   prisma/              # Global Prisma service
   common/
     guards/            # JwtAuthGuard
     decorators/        # @CurrentUser() decorator
+    interceptors/      # ResponseInterceptor (API response wrapper)
+    filters/           # HttpExceptionFilter (hata response wrapper)
+    models/            # ApiResponse<T> interface
   modules/
     auth/
       models/
@@ -106,7 +110,11 @@ Tum endpointler `/api` prefix'i altinda.
 - Tum fonksiyonlarda return tipi acikca yazilmali (type inference'a birakilmamali)
 - Interface tercih et, type sadece union/intersection icin
 - Her modul kendi models/ klasorune sahip (request.ts = input, response.ts = output)
-- Guard'lar common/guards/ altinda, decorator'lar common/decorators/ altinda
+- Tum tarihler UTC ISO 8601 formatinda (`2026-04-11T13:15:08.000Z`), `DateUtil` kullan (`common/utils/date.util.ts`)
+- Guard'lar common/guards/, decorator'lar common/decorators/ altinda
+- Tum API response'lari `ApiResponse<T>` wrapper ile sarilir (interceptor + filter)
+- Basarili: `{ success: true, timestamp, path, data }`
+- Hata: `{ success: false, timestamp, path, error: { statusCode, message } }`
 
 ## Git Workflow
 
@@ -121,8 +129,16 @@ Tum endpointler `/api` prefix'i altinda.
 2. Service'e is mantigi methodunu ekle
 3. Controller'a route handler ekle (@UseGuards, @Body, @Param)
 4. Gerekirse module'a import/provider ekle
-5. İlgili test dosyasini guncelle
+5. Ilgili test dosyasini guncelle
 6. `npx nest build` ile derleme dogrula
+
+## Yeni Modul Ekleme Adimlari
+
+1. `src/modules/<modul>/` altinda module, service, controller olustur
+2. `models/` altinda `*.request.ts` ve `*.response.ts` dosyalari olustur
+3. **`CLAUDE.md` dosyasi ekle** — dosyalar, endpointler, akis, bagimliliklar
+4. `app.module.ts`'e import ekle
+5. `npx nest build` ile derleme dogrula
 
 ## Ortam Degiskenleri
 

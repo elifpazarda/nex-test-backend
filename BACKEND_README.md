@@ -86,16 +86,46 @@ Sunucu `http://localhost:3001/api` adresinde calisir.
 
 ```
 src/
-  main.ts                # Bootstrap: ValidationPipe, CORS, /api prefix
+  main.ts                # Bootstrap, global interceptor/filter/pipe
   app.module.ts          # Root module
   prisma/                # Global Prisma service
   common/
     guards/              # JwtAuthGuard
     decorators/          # @CurrentUser() decorator
-  auth/                  # Kayit, giris, JWT token yonetimi
-  projects/              # Proje CRUD islemleri
-  scenarios/             # Test senaryosu uretim ve yonetimi
-  ai/                    # Anthropic Claude API entegrasyonu
+    interceptors/        # ResponseInterceptor (response wrapper)
+    filters/             # HttpExceptionFilter (error wrapper)
+    models/              # ApiResponse<T> interface
+  modules/
+    auth/                # Kayit, giris, JWT token yonetimi
+    projects/            # Proje CRUD islemleri
+    scenarios/           # Test senaryosu uretim ve yonetimi
+    ai/                  # Anthropic Claude API entegrasyonu
+```
+
+---
+
+## API Response Formati
+
+Tum endpointler ayni wrapper formatinda doner:
+
+**Basarili:**
+```json
+{
+  "success": true,
+  "timestamp": "2026-04-11T13:15:08.000Z",
+  "path": "/api/auth/login",
+  "data": { ... }
+}
+```
+
+**Hata:**
+```json
+{
+  "success": false,
+  "timestamp": "2026-04-11T13:15:08.000Z",
+  "path": "/api/auth/login",
+  "error": { "statusCode": 401, "message": "Gecersiz kimlik bilgileri" }
+}
 ```
 
 ---
