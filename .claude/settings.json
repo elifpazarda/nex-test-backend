@@ -1,0 +1,121 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**/*.{ts,tsx,js,json,md,prisma})",
+      "Edit(**/*.{ts,tsx,js,json,md,prisma})",
+      "Write(**/*.{ts,tsx,js,json,md,prisma})",
+      "Bash(npm run start:dev)",
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "Bash(npm run test*)",
+      "Bash(npx nest build)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx prisma generate)",
+      "Bash(npx prisma migrate*)",
+      "Bash(npx prisma studio)",
+      "Bash(npx jest*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git branch)",
+      "Bash(git checkout*)",
+      "Bash(mkdir*)",
+      "Bash(ls*)",
+      "Bash(chmod*)"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git branch -D*)",
+      "Bash(git branch -d*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean*)",
+      "Bash(npm publish*)",
+      "Edit(**/.env)",
+      "Write(**/.env)",
+      "Read(**/.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-bash.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-commit.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-env.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-secrets.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/lint-format.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/type-check.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/prisma-sync.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/test-runner.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/lint-format.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/type-check.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/prisma-sync.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/test-runner.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
