@@ -28,3 +28,33 @@ export interface ScenarioWithProject extends ScenarioResponse {
     updatedAt: Date;
   };
 }
+
+export interface ExcelRowData {
+  rowNumber: number;
+  issueKey: string;
+  testSummary: string;
+  testType: string;
+  action: string;
+  data: string;
+  result: string;
+  description: string;
+}
+
+export interface ExcelImportResultItem {
+  rowNumber: number;
+  issueKey: string;
+  testSummary: string;
+  input: string;
+  bddOutput: string;
+  qualityScore?: number;
+  qualityFeedback?: string;
+  savedId?: string;
+  error?: string;
+}
+
+export interface ExcelImportResponse {
+  totalRows: number;
+  successCount: number;
+  failureCount: number;
+  results: ExcelImportResultItem[];
+}

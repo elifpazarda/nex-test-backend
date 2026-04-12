@@ -144,6 +144,15 @@ Tum endpointler `/api` prefix'i altinda.
 
 `.env.example` dosyasina bak. `.env` dosyasi `.gitignore`'da ve hook ile korunuyor.
 
+## Assets (Fontlar)
+
+`src/assets/` klasoru `.gitignore`'da — repo'yu klonladiktan sonra manuel kurulum gerekir.
+
+PDF export icin gerekli font:
+- **NotoSans-Regular.ttf** → [Google Fonts / Noto Sans](https://fonts.google.com/noto/specimen/Noto+Sans) adresinden indir, `src/assets/fonts/NotoSans-Regular.ttf` olarak kaydet.
+
+Font eksikse `/api/scenarios/export?format=pdf` endpoint'i hata doner.
+
 ## Prisma
 
 - Schema: `prisma/schema.prisma`

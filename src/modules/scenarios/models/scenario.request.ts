@@ -5,7 +5,41 @@ import {
   MaxLength,
   IsNumber,
   IsOptional,
+  IsBoolean,
+  IsEnum,
+  IsDateString,
 } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+
+export enum ExportFormat {
+  EXCEL = 'excel',
+  PDF = 'pdf',
+  JSON = 'json',
+  FEATURE = 'feature',
+}
+
+export class ExportQueryRequest {
+  @IsEnum(ExportFormat)
+  format: ExportFormat;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Transform(({ value }) => (value !== undefined ? Number(value) : undefined))
+  minScore?: number;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  xrayFormat?: boolean;
+}
 
 export class GenerateScenarioRequest {
   @IsString()
@@ -16,6 +50,20 @@ export class GenerateScenarioRequest {
   @MinLength(10)
   @MaxLength(2000)
   input: string;
+}
+
+export class ImportExcelRequest {
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
+
+  @IsOptional()
+  @Transform(({ value }) => String(value).toLowerCase() === 'true' || value === true)
+  saveResults?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => String(value).toLowerCase() === 'true' || value === true)
+  evaluateQuality?: boolean;
 }
 
 export class SaveScenarioRequest {

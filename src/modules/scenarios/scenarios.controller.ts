@@ -5,17 +5,29 @@ import {
   Delete,
   Body,
   Param,
+  Query,
+  Res,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { ScenariosService } from './scenarios.service';
 import {
   GenerateScenarioRequest,
   SaveScenarioRequest,
+  ImportExcelRequest,
+  ExportQueryRequest,
 } from './models/scenario.request';
 import {
   GenerateScenarioResponse,
   ScenarioResponse,
   ScenarioWithProject,
+  ExcelImportResponse,
 } from './models/scenario.response';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -32,6 +44,61 @@ export class ScenariosController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<GenerateScenarioResponse> {
     return this.scenariosService.generate(request, user.id);
+  }
+
+  @Post('import-excel')
+  @UseInterceptors(FileInterceptor('file'))
+  importExcel(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({
+            fileType:
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+    @Body() request: ImportExcelRequest,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ExcelImportResponse> {
+    return this.scenariosService.importExcel(file, request, user.id);
+  }
+
+  @Get('export/project/:projectId')
+  async exportByProject(
+    @Param('projectId') projectId: string,
+    @Query() query: ExportQueryRequest,
+    @CurrentUser() user: CurrentUserData,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename, contentType } =
+      await this.scenariosService.exportByProject(projectId, query, user.id);
+
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/:id')
+  async exportSingle(
+    @Param('id') id: string,
+    @Query() query: ExportQueryRequest,
+    @CurrentUser() user: CurrentUserData,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename, contentType } =
+      await this.scenariosService.exportSingle(id, query, user.id);
+
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
   }
 
   @Post()
