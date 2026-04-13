@@ -3,9 +3,10 @@ import { ScenariosService } from './scenarios.service';
 import { ScenariosController } from './scenarios.controller';
 import { AiModule } from '../ai/ai.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { JiraModule } from '../jira/jira.module';
 
 @Module({
-  imports: [AiModule, ProjectsModule],
+  imports: [AiModule, ProjectsModule, JiraModule],
   providers: [ScenariosService],
   controllers: [ScenariosController],
 })

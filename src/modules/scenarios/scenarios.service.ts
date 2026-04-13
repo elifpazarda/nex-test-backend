@@ -7,8 +7,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { ProjectsService } from '../projects/projects.service';
+import { JiraService } from '../jira/jira.service';
 import {
   GenerateScenarioRequest,
+  GenerateFromJiraRequest,
   SaveScenarioRequest,
   ImportExcelRequest,
   ExportQueryRequest,
@@ -16,6 +18,7 @@ import {
 } from './models/scenario.request';
 import {
   GenerateScenarioResponse,
+  GenerateFromJiraResponse,
   ScenarioResponse,
   ScenarioWithProject,
   ExcelRowData,
@@ -32,6 +35,7 @@ export class ScenariosService {
     private prisma: PrismaService,
     private aiService: AiService,
     private projectsService: ProjectsService,
+    private jiraService: JiraService,
   ) {}
 
   async generate(
@@ -52,6 +56,35 @@ export class ScenariosService {
     };
   }
 
+  async generateFromJira(
+    request: GenerateFromJiraRequest,
+    userId: string,
+  ): Promise<GenerateFromJiraResponse> {
+    await this.projectsService.findOne(request.projectId, userId);
+
+    const issue = await this.jiraService.getIssue(userId, request.issueKey);
+    const input = this.buildJiraInput(issue);
+
+    const rawOutput = await this.aiService.generateTestScenario(input);
+    const bddOutput = await this.aiService.convertToBdd(rawOutput);
+    const { score, feedback } = await this.aiService.evaluateQuality(rawOutput);
+
+    return {
+      input,
+      rawOutput,
+      bddOutput,
+      qualityScore: score,
+      qualityFeedback: feedback,
+      jiraIssue: {
+        key: issue.key,
+        summary: issue.summary,
+        issueType: issue.issueType,
+        status: issue.status,
+        url: issue.url,
+      },
+    };
+  }
+
   async save(
     request: SaveScenarioRequest,
     userId: string,
@@ -65,9 +98,27 @@ export class ScenariosService {
         bddOutput: request.bddOutput,
         qualityScore: request.qualityScore,
         qualityFeedback: request.qualityFeedback ?? '',
+        sourceType: request.sourceType ?? null,
+        sourceRef: request.sourceRef ?? null,
         projectId: request.projectId,
       },
     });
+  }
+
+  private buildJiraInput(issue: {
+    key: string;
+    summary: string;
+    description: string;
+    issueType: string;
+  }): string {
+    const parts: string[] = [
+      `Jira Issue: ${issue.key} (${issue.issueType})`,
+      `Summary: ${issue.summary}`,
+    ];
+    if (issue.description) {
+      parts.push(`Description:\n${issue.description}`);
+    }
+    return parts.join('\n\n');
   }
 
   async findByProject(

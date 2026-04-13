@@ -52,6 +52,16 @@ export class GenerateScenarioRequest {
   input: string;
 }
 
+export class GenerateFromJiraRequest {
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  issueKey: string;
+}
+
 export class ImportExcelRequest {
   @IsString()
   @IsNotEmpty()
@@ -93,4 +103,12 @@ export class SaveScenarioRequest {
   @IsString()
   @IsOptional()
   qualityFeedback?: string;
+
+  @IsString()
+  @IsOptional()
+  sourceType?: string;
+
+  @IsString()
+  @IsOptional()
+  sourceRef?: string;
 }

@@ -17,6 +17,7 @@ AI destekli test senaryosu uretimi, kaydetme ve yonetimi. AiService ile entegre 
 | Method | Endpoint | Request | Response |
 |--------|----------|---------|----------|
 | POST | /scenarios/generate | `GenerateScenarioRequest` | `GenerateScenarioResponse` |
+| POST | /scenarios/generate-from-jira | `GenerateFromJiraRequest` | `GenerateFromJiraResponse` |
 | POST | /scenarios | `SaveScenarioRequest` | `ScenarioResponse` |
 | GET | /scenarios/project/:projectId | - | `ScenarioResponse[]` |
 | GET | /scenarios/:id | - | `ScenarioWithProject` |

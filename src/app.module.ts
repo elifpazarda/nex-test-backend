@@ -5,6 +5,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ScenariosModule } from './modules/scenarios/scenarios.module';
 import { AiModule } from './modules/ai/ai.module';
+import { JiraModule } from './modules/jira/jira.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AiModule } from './modules/ai/ai.module';
     ProjectsModule,
     ScenariosModule,
     AiModule,
+    JiraModule,
   ],
 })
 export class AppModule {}

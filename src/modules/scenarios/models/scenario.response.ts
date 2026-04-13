@@ -5,6 +5,17 @@ export interface GenerateScenarioResponse {
   qualityFeedback: string;
 }
 
+export interface GenerateFromJiraResponse extends GenerateScenarioResponse {
+  input: string;
+  jiraIssue: {
+    key: string;
+    summary: string;
+    issueType: string;
+    status: string;
+    url: string;
+  };
+}
+
 export interface ScenarioResponse {
   id: string;
   title: string;
@@ -13,6 +24,8 @@ export interface ScenarioResponse {
   bddOutput: string;
   qualityScore: number;
   qualityFeedback: string;
+  sourceType: string | null;
+  sourceRef: string | null;
   projectId: string;
   createdAt: Date;
   updatedAt: Date;

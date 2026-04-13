@@ -7,15 +7,29 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  name      String
-  email     String    @unique
-  password  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  projects  Project[]
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  password       String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  projects       Project[]
+  jiraConnection JiraConnection?
 
   @@map("users")
+}
+
+model JiraConnection {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  baseUrl     String
+  email       String
+  apiToken    String   @db.Text
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("jira_connections")
 }
 
 model Project {
@@ -39,6 +53,8 @@ model TestScenario {
   bddOutput       String   @db.Text
   qualityScore    Int
   qualityFeedback String   @db.Text
+  sourceType      String?
+  sourceRef       String?
   projectId       String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

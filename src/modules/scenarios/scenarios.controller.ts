@@ -19,12 +19,14 @@ import type { Response } from 'express';
 import { ScenariosService } from './scenarios.service';
 import {
   GenerateScenarioRequest,
+  GenerateFromJiraRequest,
   SaveScenarioRequest,
   ImportExcelRequest,
   ExportQueryRequest,
 } from './models/scenario.request';
 import {
   GenerateScenarioResponse,
+  GenerateFromJiraResponse,
   ScenarioResponse,
   ScenarioWithProject,
   ExcelImportResponse,
@@ -44,6 +46,14 @@ export class ScenariosController {
     @CurrentUser() user: CurrentUserData,
   ): Promise<GenerateScenarioResponse> {
     return this.scenariosService.generate(request, user.id);
+  }
+
+  @Post('generate-from-jira')
+  generateFromJira(
+    @Body() request: GenerateFromJiraRequest,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<GenerateFromJiraResponse> {
+    return this.scenariosService.generateFromJira(request, user.id);
   }
 
   @Post('import-excel')

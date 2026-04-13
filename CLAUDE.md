@@ -73,6 +73,12 @@ src/
       scenarios.controller.ts
     ai/
       ai.service.ts          # Anthropic SDK: senaryo uret, BDD donustur, kalite degerlendir
+    jira/
+      models/
+        jira.request.ts      # SaveJiraConnectionRequest
+        jira.response.ts     # JiraConnectionResponse, JiraIssueResponse
+      jira.service.ts        # Jira REST client, ADF → plain text, token encrypt/decrypt
+      jira.controller.ts     # /jira/connection CRUD
 ```
 
 ## API Endpointleri
@@ -91,10 +97,14 @@ Tum endpointler `/api` prefix'i altinda.
 | PATCH | /api/projects/:id | JWT | Proje guncelle |
 | DELETE | /api/projects/:id | JWT | Proje sil |
 | POST | /api/scenarios/generate | JWT | AI ile senaryo uret |
+| POST | /api/scenarios/generate-from-jira | JWT | Jira issue'dan AI ile senaryo uret |
 | POST | /api/scenarios | JWT | Senaryo kaydet |
 | GET | /api/scenarios/project/:id | JWT | Proje senaryolari |
 | GET | /api/scenarios/:id | JWT | Senaryo detay |
 | DELETE | /api/scenarios/:id | JWT | Senaryo sil |
+| POST | /api/jira/connection | JWT | Jira baglantisi kur (token test edilir) |
+| GET | /api/jira/connection | JWT | Jira baglanti bilgisi (token doner degil) |
+| DELETE | /api/jira/connection | JWT | Jira baglantisini sil |
 
 ## Kodlama Standartlari
 

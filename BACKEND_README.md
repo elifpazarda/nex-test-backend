@@ -41,7 +41,13 @@ cp .env.example .env
 npx prisma generate
 npx prisma migrate dev
 
-# 5. Sunucuyu baslat
+# 5. PDF export icin font indir (opsiyonel, sadece PDF export kullanacaksan)
+mkdir -p src/assets/fonts
+# Google Fonts'tan Noto Sans Regular indir ve su konuma koy:
+#   src/assets/fonts/NotoSans-Regular.ttf
+# https://fonts.google.com/noto/specimen/Noto+Sans
+
+# 6. Sunucuyu baslat
 npm run start:dev
 ```
 
@@ -63,6 +69,7 @@ Sunucu `http://localhost:3001/api` adresinde calisir.
 | `JWT_REFRESH_SECRET` | Refresh token imza anahtari | Rastgele uzun bir string |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token suresi | `7d` |
 | `ANTHROPIC_API_KEY` | Claude API anahtari | `sk-ant-...` |
+| `JIRA_TOKEN_ENCRYPTION_KEY` | Jira API token sifreleme anahtari (64 char hex) | `openssl rand -hex 32` cikisini kullan |
 | `FRONTEND_URL` | CORS icin frontend adresi | `http://localhost:3000` |
 
 ---
@@ -98,9 +105,14 @@ src/
   modules/
     auth/                # Kayit, giris, JWT token yonetimi
     projects/            # Proje CRUD islemleri
-    scenarios/           # Test senaryosu uretim ve yonetimi
+    scenarios/           # Test senaryosu uretim, import/export, yonetim
     ai/                  # Anthropic Claude API entegrasyonu
+    jira/                # Jira baglantisi ve issue cekme
 ```
+
+### Assets (Font)
+
+`src/assets/` klasoru `.gitignore`'da, repo'da takip edilmez. PDF export kullanacaksan **NotoSans-Regular.ttf** dosyasini [Google Fonts](https://fonts.google.com/noto/specimen/Noto+Sans) uzerinden indirip `src/assets/fonts/NotoSans-Regular.ttf` olarak kaydetmen gerekir. Font eksikse `/api/scenarios/export?format=pdf` endpoint'i hata doner.
 
 ---
 
@@ -134,7 +146,7 @@ Tum endpointler ayni wrapper formatinda doner:
 
 Prisma ORM kullanilir. Schema: `prisma/schema.prisma`
 
-**Modeller:** User, Project, TestScenario
+**Modeller:** User, Project, TestScenario, JiraConnection
 
 ```bash
 npx prisma generate                    # Client olustur
@@ -172,8 +184,48 @@ Tum endpointler `/api` prefix'i altinda.
 
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
-| POST | /api/scenarios/generate | JWT | Claude ile senaryo uret (kaydetmez) |
-| POST | /api/scenarios | JWT | Senaryoyu kaydet |
+| POST | /api/scenarios/generate | JWT | Claude ile text'ten senaryo uret (kaydetmez) |
+| POST | /api/scenarios/generate-from-jira | JWT | Jira issue'dan senaryo uret (kaydetmez) |
+| POST | /api/scenarios/import-excel | JWT | Excel (Xray formati) dosyasindan senaryo import |
+| POST | /api/scenarios | JWT | Senaryoyu kaydet (manuel ya da uretilmis) |
 | GET | /api/scenarios/project/:id | JWT | Projenin senaryolari |
 | GET | /api/scenarios/:id | JWT | Senaryo detay |
+| GET | /api/scenarios/export/project/:projectId | JWT | Proje senaryolarini export (excel/pdf/json/feature) |
+| GET | /api/scenarios/export/:id | JWT | Tek senaryoyu export |
 | DELETE | /api/scenarios/:id | JWT | Senaryo sil |
+
+### Jira — `/api/jira`
+
+| Method | Endpoint | Auth | Aciklama |
+|--------|----------|------|----------|
+| POST | /api/jira/connection | JWT | Jira baglantisi kur (baseUrl + email + apiToken); token kaydedilmeden once test edilir |
+| GET | /api/jira/connection | JWT | Mevcut baglanti bilgisi (token dondurulmez) |
+| DELETE | /api/jira/connection | JWT | Baglantiyi sil |
+
+**Jira'dan senaryo uretme akisi:**
+
+1. [Atlassian hesabindan](https://id.atlassian.com/manage-profile/security/api-tokens) bir API token olustur
+2. `POST /api/jira/connection` ile bagla:
+   ```json
+   {
+     "baseUrl": "https://sirket.atlassian.net",
+     "email": "sen@sirket.com",
+     "apiToken": "..."
+   }
+   ```
+3. `POST /api/scenarios/generate-from-jira` ile issue'dan senaryo uret:
+   ```json
+   { "projectId": "...", "issueKey": "PROJ-123" }
+   ```
+4. Donen ciktiyi `POST /api/scenarios` ile kaydet (opsiyonel: `sourceType: "jira"`, `sourceRef: "PROJ-123"`)
+
+Token AES-256-GCM ile sifreli saklanir (`JIRA_TOKEN_ENCRYPTION_KEY` ile). Token hicbir response'da geri donmez.
+
+**Onkosullar:**
+
+- **Jira Cloud zorunlu.** Servis `/rest/api/3/` endpoint'lerini kullanir; bu yalnizca Cloud'da (`*.atlassian.net`) vardir. Jira Server / Data Center destegi yoktur.
+- **`baseUrl` format:** Sadece scheme + domain. Sonunda slash, path veya `/jira` olmamali.
+  - ✅ Dogru: `https://sirket.atlassian.net`
+  - ❌ Yanlis: `https://sirket.atlassian.net/`, `https://sirket.atlassian.net/jira`
+- **`issueKey` format:** `[A-Z][A-Z0-9]+-\d+` regex'ine uymali (orn: `PROJ-123`, `CLAR-131`). Kucuk harf veya format disi string `400` doner.
+- **Jira email'i** bizim backend kullanici email'inden farkli olabilir; ikisi bagimsiz sistemlerdir.
