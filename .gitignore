@@ -59,3 +59,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Assets (fontlar manuel indirilir - CLAUDE.md'ye bak)
 /src/assets
+
+docs/

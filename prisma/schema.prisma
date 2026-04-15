@@ -51,8 +51,6 @@ model TestScenario {
   input           String   @db.Text
   rawOutput       String   @db.Text
   bddOutput       String   @db.Text
-  qualityScore    Int
-  qualityFeedback String   @db.Text
   sourceType      String?
   sourceRef       String?
   projectId       String

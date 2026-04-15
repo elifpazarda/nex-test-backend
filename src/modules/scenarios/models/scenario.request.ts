@@ -3,13 +3,12 @@ import {
   IsNotEmpty,
   MinLength,
   MaxLength,
-  IsNumber,
   IsOptional,
   IsBoolean,
   IsEnum,
   IsDateString,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 
 export enum ExportFormat {
   EXCEL = 'excel',
@@ -21,11 +20,6 @@ export enum ExportFormat {
 export class ExportQueryRequest {
   @IsEnum(ExportFormat)
   format: ExportFormat;
-
-  @IsOptional()
-  @Type(() => Number)
-  @Transform(({ value }) => (value !== undefined ? Number(value) : undefined))
-  minScore?: number;
 
   @IsOptional()
   @IsDateString()
@@ -41,7 +35,7 @@ export class ExportQueryRequest {
   xrayFormat?: boolean;
 }
 
-export class GenerateScenarioRequest {
+export class GenerateFromTextRequest {
   @IsString()
   @IsNotEmpty()
   projectId: string;
@@ -62,18 +56,32 @@ export class GenerateFromJiraRequest {
   issueKey: string;
 }
 
+export class GenerateFromFileRequest {
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
+}
+
 export class ImportExcelRequest {
   @IsString()
   @IsNotEmpty()
   projectId: string;
 
   @IsOptional()
-  @Transform(({ value }) => String(value).toLowerCase() === 'true' || value === true)
+  @Transform(
+    ({ value }) => String(value).toLowerCase() === 'true' || value === true,
+  )
   saveResults?: boolean;
+}
 
-  @IsOptional()
-  @Transform(({ value }) => String(value).toLowerCase() === 'true' || value === true)
-  evaluateQuality?: boolean;
+export class ConvertBddRequest {
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  rawOutput: string;
 }
 
 export class SaveScenarioRequest {
@@ -96,13 +104,6 @@ export class SaveScenarioRequest {
   @IsString()
   @IsNotEmpty()
   bddOutput: string;
-
-  @IsNumber()
-  qualityScore: number;
-
-  @IsString()
-  @IsOptional()
-  qualityFeedback?: string;
 
   @IsString()
   @IsOptional()

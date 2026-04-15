@@ -1,19 +1,12 @@
 export interface GenerateScenarioResponse {
   rawOutput: string;
-  bddOutput: string;
-  qualityScore: number;
-  qualityFeedback: string;
+  input: string;
+  sourceType: string;
+  sourceRef?: string;
 }
 
-export interface GenerateFromJiraResponse extends GenerateScenarioResponse {
-  input: string;
-  jiraIssue: {
-    key: string;
-    summary: string;
-    issueType: string;
-    status: string;
-    url: string;
-  };
+export interface ConvertBddResponse {
+  bddOutput: string;
 }
 
 export interface ScenarioResponse {
@@ -22,8 +15,6 @@ export interface ScenarioResponse {
   input: string;
   rawOutput: string;
   bddOutput: string;
-  qualityScore: number;
-  qualityFeedback: string;
   sourceType: string | null;
   sourceRef: string | null;
   projectId: string;
@@ -59,8 +50,6 @@ export interface ExcelImportResultItem {
   testSummary: string;
   input: string;
   bddOutput: string;
-  qualityScore?: number;
-  qualityFeedback?: string;
   savedId?: string;
   error?: string;
 }

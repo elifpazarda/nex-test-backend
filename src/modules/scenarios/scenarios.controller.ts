@@ -18,15 +18,17 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ScenariosService } from './scenarios.service';
 import {
-  GenerateScenarioRequest,
+  GenerateFromTextRequest,
   GenerateFromJiraRequest,
+  GenerateFromFileRequest,
+  ConvertBddRequest,
   SaveScenarioRequest,
   ImportExcelRequest,
   ExportQueryRequest,
 } from './models/scenario.request';
 import {
   GenerateScenarioResponse,
-  GenerateFromJiraResponse,
+  ConvertBddResponse,
   ScenarioResponse,
   ScenarioWithProject,
   ExcelImportResponse,
@@ -40,20 +42,67 @@ import type { CurrentUserData } from '../../common/decorators/current-user.decor
 export class ScenariosController {
   constructor(private scenariosService: ScenariosService) {}
 
-  @Post('generate')
-  generate(
-    @Body() request: GenerateScenarioRequest,
+  @Post('generate/text')
+  generateFromText(
+    @Body() request: GenerateFromTextRequest,
     @CurrentUser() user: CurrentUserData,
   ): Promise<GenerateScenarioResponse> {
-    return this.scenariosService.generate(request, user.id);
+    return this.scenariosService.generateFromText(request, user.id);
   }
 
-  @Post('generate-from-jira')
+  @Post('generate/jira')
   generateFromJira(
     @Body() request: GenerateFromJiraRequest,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<GenerateFromJiraResponse> {
+  ): Promise<GenerateScenarioResponse> {
     return this.scenariosService.generateFromJira(request, user.id);
+  }
+
+  @Post('generate/excel')
+  @UseInterceptors(FileInterceptor('file'))
+  generateFromExcel(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({
+            fileType:
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+    @Body() request: GenerateFromFileRequest,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<GenerateScenarioResponse> {
+    return this.scenariosService.generateFromExcel(file, request, user.id);
+  }
+
+  @Post('generate/pdf')
+  @UseInterceptors(FileInterceptor('file'))
+  generateFromPdf(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: 'application/pdf' }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+    @Body() request: GenerateFromFileRequest,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<GenerateScenarioResponse> {
+    return this.scenariosService.generateFromPdf(file, request, user.id);
+  }
+
+  @Post('convert-bdd')
+  convertToBdd(
+    @Body() request: ConvertBddRequest,
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<ConvertBddResponse> {
+    return this.scenariosService.convertToBdd(request, user.id);
   }
 
   @Post('import-excel')

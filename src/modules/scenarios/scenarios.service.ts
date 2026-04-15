@@ -9,8 +9,10 @@ import { AiService } from '../ai/ai.service';
 import { ProjectsService } from '../projects/projects.service';
 import { JiraService } from '../jira/jira.service';
 import {
-  GenerateScenarioRequest,
+  GenerateFromTextRequest,
   GenerateFromJiraRequest,
+  GenerateFromFileRequest,
+  ConvertBddRequest,
   SaveScenarioRequest,
   ImportExcelRequest,
   ExportQueryRequest,
@@ -18,7 +20,7 @@ import {
 } from './models/scenario.request';
 import {
   GenerateScenarioResponse,
-  GenerateFromJiraResponse,
+  ConvertBddResponse,
   ScenarioResponse,
   ScenarioWithProject,
   ExcelRowData,
@@ -27,6 +29,10 @@ import {
 } from './models/scenario.response';
 import * as ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse') as (
+  buffer: Buffer,
+) => Promise<{ text: string }>;
 import * as path from 'path';
 
 @Injectable()
@@ -38,51 +44,90 @@ export class ScenariosService {
     private jiraService: JiraService,
   ) {}
 
-  async generate(
-    request: GenerateScenarioRequest,
+  async generateFromText(
+    request: GenerateFromTextRequest,
     userId: string,
   ): Promise<GenerateScenarioResponse> {
     await this.projectsService.findOne(request.projectId, userId);
 
     const rawOutput = await this.aiService.generateTestScenario(request.input);
-    const bddOutput = await this.aiService.convertToBdd(rawOutput);
-    const { score, feedback } = await this.aiService.evaluateQuality(rawOutput);
 
-    return {
-      rawOutput,
-      bddOutput,
-      qualityScore: score,
-      qualityFeedback: feedback,
-    };
+    return { rawOutput, input: request.input, sourceType: 'text' };
   }
 
   async generateFromJira(
     request: GenerateFromJiraRequest,
     userId: string,
-  ): Promise<GenerateFromJiraResponse> {
+  ): Promise<GenerateScenarioResponse> {
     await this.projectsService.findOne(request.projectId, userId);
 
     const issue = await this.jiraService.getIssue(userId, request.issueKey);
     const input = this.buildJiraInput(issue);
 
     const rawOutput = await this.aiService.generateTestScenario(input);
-    const bddOutput = await this.aiService.convertToBdd(rawOutput);
-    const { score, feedback } = await this.aiService.evaluateQuality(rawOutput);
 
     return {
-      input,
       rawOutput,
-      bddOutput,
-      qualityScore: score,
-      qualityFeedback: feedback,
-      jiraIssue: {
-        key: issue.key,
-        summary: issue.summary,
-        issueType: issue.issueType,
-        status: issue.status,
-        url: issue.url,
-      },
+      input,
+      sourceType: 'jira',
+      sourceRef: issue.key,
     };
+  }
+
+  async generateFromExcel(
+    file: Express.Multer.File,
+    request: GenerateFromFileRequest,
+    userId: string,
+  ): Promise<GenerateScenarioResponse> {
+    await this.projectsService.findOne(request.projectId, userId);
+
+    const input = await this.extractExcelContent(file.buffer);
+    if (!input) {
+      throw new BadRequestException('Excel dosyasından içerik okunamadı');
+    }
+
+    const rawOutput = await this.aiService.generateTestScenario(input);
+
+    return {
+      rawOutput,
+      input,
+      sourceType: 'excel',
+      sourceRef: file.originalname,
+    };
+  }
+
+  async generateFromPdf(
+    file: Express.Multer.File,
+    request: GenerateFromFileRequest,
+    userId: string,
+  ): Promise<GenerateScenarioResponse> {
+    await this.projectsService.findOne(request.projectId, userId);
+
+    const parsed = await pdfParse(file.buffer);
+    const input = parsed.text?.trim();
+    if (!input) {
+      throw new BadRequestException('PDF dosyasından içerik okunamadı');
+    }
+
+    const rawOutput = await this.aiService.generateTestScenario(input);
+
+    return {
+      rawOutput,
+      input,
+      sourceType: 'pdf',
+      sourceRef: file.originalname,
+    };
+  }
+
+  async convertToBdd(
+    request: ConvertBddRequest,
+    userId: string,
+  ): Promise<ConvertBddResponse> {
+    await this.projectsService.findOne(request.projectId, userId);
+
+    const bddOutput = await this.aiService.convertToBdd(request.rawOutput);
+
+    return { bddOutput };
   }
 
   async save(
@@ -96,8 +141,6 @@ export class ScenariosService {
         input: request.input,
         rawOutput: request.rawOutput,
         bddOutput: request.bddOutput,
-        qualityScore: request.qualityScore,
-        qualityFeedback: request.qualityFeedback ?? '',
         sourceType: request.sourceType ?? null,
         sourceRef: request.sourceRef ?? null,
         projectId: request.projectId,
@@ -158,11 +201,14 @@ export class ScenariosService {
 
     const rows = await this.parseExcel(file.buffer);
     if (rows.length === 0) {
-      throw new BadRequestException('Excel dosyasında işlenecek satır bulunamadı');
+      throw new BadRequestException(
+        'Excel dosyasında işlenecek satır bulunamadı',
+      );
     }
 
-    const evaluateQuality = (request.evaluateQuality as unknown) !== false && (request.evaluateQuality as unknown) !== 'false';
-    const saveResults = request.saveResults === true || (request.saveResults as unknown) === 'true';
+    const saveResults =
+      request.saveResults === true ||
+      (request.saveResults as unknown) === 'true';
 
     const results: ExcelImportResultItem[] = [];
     let successCount = 0;
@@ -172,8 +218,6 @@ export class ScenariosService {
       const input = this.buildInput(row);
 
       let bddOutput = '';
-      let qualityScore: number | undefined;
-      let qualityFeedback: string | undefined;
       let aiError: string | undefined;
 
       try {
@@ -182,24 +226,12 @@ export class ScenariosService {
         aiError = error instanceof Error ? error.message : 'BDD dönüşüm hatası';
       }
 
-      if (evaluateQuality && !aiError) {
-        try {
-          const result = await this.aiService.evaluateQuality(input);
-          qualityScore = result.score;
-          qualityFeedback = result.feedback;
-        } catch {
-          // Kalite değerlendirmesi başarısız olursa devam et
-        }
-      }
-
       const resultItem: ExcelImportResultItem = {
         rowNumber: row.rowNumber,
         issueKey: row.issueKey,
         testSummary: row.testSummary,
         input,
         bddOutput,
-        qualityScore,
-        qualityFeedback,
         error: aiError,
       };
 
@@ -207,18 +239,21 @@ export class ScenariosService {
         try {
           const saved = await this.prisma.testScenario.create({
             data: {
-              title: row.testSummary || row.issueKey || row.action.slice(0, 50) || `Row ${row.rowNumber}`,
+              title:
+                row.testSummary ||
+                row.issueKey ||
+                row.action.slice(0, 50) ||
+                `Row ${row.rowNumber}`,
               input,
               rawOutput: input,
               bddOutput,
-              qualityScore: qualityScore ?? 0,
-              qualityFeedback: qualityFeedback ?? '',
               projectId: request.projectId,
             },
           });
           resultItem.savedId = saved.id;
         } catch (error) {
-          resultItem.error = error instanceof Error ? error.message : 'Kaydetme hatası';
+          resultItem.error =
+            error instanceof Error ? error.message : 'Kaydetme hatası';
         }
       }
 
@@ -287,10 +322,6 @@ export class ScenariosService {
   ): Promise<ScenarioResponse[]> {
     const where: Record<string, unknown> = { projectId };
 
-    if (query.minScore !== undefined) {
-      where.qualityScore = { gte: query.minScore };
-    }
-
     if (query.startDate || query.endDate) {
       const createdAt: Record<string, string> = {};
       if (query.startDate) createdAt.gte = query.startDate;
@@ -349,8 +380,6 @@ export class ScenariosService {
         { header: 'Title', key: 'title', width: 30 },
         { header: 'Input', key: 'input', width: 40 },
         { header: 'BDD Output', key: 'bddOutput', width: 50 },
-        { header: 'Quality Score', key: 'qualityScore', width: 15 },
-        { header: 'Quality Feedback', key: 'qualityFeedback', width: 30 },
         { header: 'Created At', key: 'createdAt', width: 25 },
       ];
 
@@ -359,8 +388,6 @@ export class ScenariosService {
           title: s.title,
           input: s.input,
           bddOutput: s.bddOutput,
-          qualityScore: s.qualityScore,
-          qualityFeedback: s.qualityFeedback,
           createdAt: s.createdAt,
         });
       }
@@ -385,7 +412,15 @@ export class ScenariosService {
     title: string,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     return new Promise((resolve) => {
-      const fontPath = path.join(__dirname, '..', '..', '..', 'assets', 'fonts', 'NotoSans-Regular.ttf');
+      const fontPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'assets',
+        'fonts',
+        'NotoSans-Regular.ttf',
+      );
       const doc = new PDFDocument({ margin: 50 });
       const chunks: Buffer[] = [];
 
@@ -416,12 +451,6 @@ export class ScenariosService {
         doc.fontSize(14).text(s.title, { underline: true });
         doc.moveDown(0.5);
 
-        doc.fontSize(10).text(`Quality Score: ${s.qualityScore}/100`);
-        if (s.qualityFeedback) {
-          doc.text(`Feedback: ${s.qualityFeedback}`);
-        }
-        doc.moveDown(0.5);
-
         doc.fontSize(11).text('Input:', { underline: true });
         doc.fontSize(10).text(s.input);
         doc.moveDown(0.5);
@@ -443,8 +472,6 @@ export class ScenariosService {
       title: s.title,
       input: s.input,
       bddOutput: s.bddOutput,
-      qualityScore: s.qualityScore,
-      qualityFeedback: s.qualityFeedback,
       createdAt: s.createdAt,
     }));
 
@@ -489,14 +516,18 @@ export class ScenariosService {
 
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {
-      throw new BadRequestException('Excel dosyasında çalışma sayfası bulunamadı');
+      throw new BadRequestException(
+        'Excel dosyasında çalışma sayfası bulunamadı',
+      );
     }
 
     const headerRow = worksheet.getRow(1);
     const columnMap = new Map<string, number>();
 
     headerRow.eachCell((cell, colNumber) => {
-      const header = String(cell.value ?? '').trim().toLowerCase();
+      const header = String(cell.value ?? '')
+        .trim()
+        .toLowerCase();
       columnMap.set(header, colNumber);
     });
 
@@ -554,5 +585,29 @@ export class ScenariosService {
     if (row.result) parts.push(`Expected Result: ${row.result}`);
 
     return parts.join('\n');
+  }
+
+  private async extractExcelContent(buffer: Buffer): Promise<string> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+    const lines: string[] = [];
+
+    for (const worksheet of workbook.worksheets) {
+      lines.push(`--- ${worksheet.name} ---`);
+      worksheet.eachRow((row) => {
+        const values = row.values as (string | number | null)[];
+        const cells = values
+          .slice(1)
+          .map((v) => String(v ?? '').trim())
+          .filter((v) => v);
+        if (cells.length > 0) {
+          lines.push(cells.join(' | '));
+        }
+      });
+      lines.push('');
+    }
+
+    return lines.join('\n').trim();
   }
 }
