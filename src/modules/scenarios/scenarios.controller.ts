@@ -22,7 +22,7 @@ import {
   GenerateFromJiraRequest,
   GenerateFromFileRequest,
   ConvertBddRequest,
-  SaveScenarioRequest,
+  SaveScenariosRequest,
   ImportExcelRequest,
   ExportQueryRequest,
 } from './models/scenario.request';
@@ -162,9 +162,9 @@ export class ScenariosController {
 
   @Post()
   save(
-    @Body() request: SaveScenarioRequest,
+    @Body() request: SaveScenariosRequest,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<ScenarioResponse> {
+  ): Promise<ScenarioResponse[]> {
     return this.scenariosService.save(request, user.id);
   }
 

@@ -1,0 +1,41 @@
+Aşağıdaki test senaryolarını çalıştırılabilir Cucumber test koduna dönüştür.
+
+Her senaryo için:
+- scenarioId: Orijinal senaryo ID'sini koru (TC-001 gibi)
+- language: "typescript"
+- code: Gherkin feature dosyası ve TypeScript step definition kodunu birlikte içeren çalıştırılabilir kod
+
+Kod formatı şu şekilde olmalı:
+1. Önce Gherkin feature dosyası (Feature, Scenario, Given, When, Then)
+2. Ardından "// --- Step Definitions ---" ayracı
+3. Sonra TypeScript step definition kodu (@cucumber/cucumber import'ları ile)
+
+Örnek çıktı formatı:
+```
+Feature: Login
+  Scenario: Valid login
+    Given user is on login page
+    When user enters valid credentials
+    Then user should see dashboard
+
+// --- Step Definitions ---
+import { Given, When, Then } from '@cucumber/cucumber';
+import { expect } from 'chai';
+
+Given('user is on login page', async function () {
+  await this.page.goto('/login');
+});
+
+When('user enters valid credentials', async function () {
+  await this.page.fill('#email', 'test@example.com');
+  await this.page.fill('#password', 'Test123!');
+  await this.page.click('button[type="submit"]');
+});
+
+Then('user should see dashboard', async function () {
+  expect(await this.page.url()).to.include('/dashboard');
+});
+```
+
+Test Senaryoları:
+{{input}}

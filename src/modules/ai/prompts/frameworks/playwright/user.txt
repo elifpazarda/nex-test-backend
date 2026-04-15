@@ -1,0 +1,31 @@
+Aşağıdaki test senaryolarını çalıştırılabilir Playwright test koduna dönüştür.
+
+Her senaryo için:
+- scenarioId: Orijinal senaryo ID'sini koru (TC-001 gibi)
+- language: "typescript"
+- code: @playwright/test import'ları ile çalıştırılabilir Playwright test kodu
+
+Kod formatı şu şekilde olmalı:
+- import { test, expect } from '@playwright/test' kullan
+- test.describe ile grupla
+- test() blokları içinde page interaction'larını yaz
+- Locator'lar için getByRole, getByText, getByPlaceholder tercih et
+- Assertion'lar için expect kullan
+
+Örnek çıktı formatı:
+```
+import { test, expect } from '@playwright/test';
+
+test.describe('Login', () => {
+  test('should login with valid credentials', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByPlaceholder('Email').fill('test@example.com');
+    await page.getByPlaceholder('Password').fill('Test123!');
+    await page.getByRole('button', { name: 'Giriş Yap' }).click();
+    await expect(page).toHaveURL(/dashboard/);
+  });
+});
+```
+
+Test Senaryoları:
+{{input}}

@@ -1,0 +1,17 @@
+Aşağıdaki açıklama için kapsamlı test senaryoları üret.
+
+Açıklama: {{input}}
+
+Şu kategorilerde senaryolar yaz:
+- happy_path: Başarılı akış senaryoları
+- edge_case: Sınır durumlar
+- negative: Hata durumları / olumsuz senaryolar
+
+Her senaryo için:
+- id: TC-001 formatında sıralı
+- title: Kısa ve açıklayıcı başlık
+- category: happy_path, edge_case veya negative
+- priority: critical, high, medium veya low
+- preconditions: Ön koşullar (yoksa "Yok" yaz)
+- steps: Adımlar dizisi
+- expectedResult: Beklenen sonuç

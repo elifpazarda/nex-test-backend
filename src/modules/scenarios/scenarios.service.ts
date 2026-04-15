@@ -13,7 +13,7 @@ import {
   GenerateFromJiraRequest,
   GenerateFromFileRequest,
   ConvertBddRequest,
-  SaveScenarioRequest,
+  SaveScenariosRequest,
   ImportExcelRequest,
   ExportQueryRequest,
   ExportFormat,
@@ -50,9 +50,9 @@ export class ScenariosService {
   ): Promise<GenerateScenarioResponse> {
     await this.projectsService.findOne(request.projectId, userId);
 
-    const rawOutput = await this.aiService.generateTestScenario(request.input);
+    const scenarios = await this.aiService.generateTestScenario(request.input);
 
-    return { rawOutput, input: request.input, sourceType: 'text' };
+    return { scenarios, input: request.input, sourceType: 'text' };
   }
 
   async generateFromJira(
@@ -64,10 +64,10 @@ export class ScenariosService {
     const issue = await this.jiraService.getIssue(userId, request.issueKey);
     const input = this.buildJiraInput(issue);
 
-    const rawOutput = await this.aiService.generateTestScenario(input);
+    const scenarios = await this.aiService.generateTestScenario(input);
 
     return {
-      rawOutput,
+      scenarios,
       input,
       sourceType: 'jira',
       sourceRef: issue.key,
@@ -86,10 +86,10 @@ export class ScenariosService {
       throw new BadRequestException('Excel dosyasından içerik okunamadı');
     }
 
-    const rawOutput = await this.aiService.generateTestScenario(input);
+    const scenarios = await this.aiService.generateTestScenario(input);
 
     return {
-      rawOutput,
+      scenarios,
       input,
       sourceType: 'excel',
       sourceRef: file.originalname,
@@ -109,10 +109,10 @@ export class ScenariosService {
       throw new BadRequestException('PDF dosyasından içerik okunamadı');
     }
 
-    const rawOutput = await this.aiService.generateTestScenario(input);
+    const scenarios = await this.aiService.generateTestScenario(input);
 
     return {
-      rawOutput,
+      scenarios,
       input,
       sourceType: 'pdf',
       sourceRef: file.originalname,
@@ -125,27 +125,54 @@ export class ScenariosService {
   ): Promise<ConvertBddResponse> {
     await this.projectsService.findOne(request.projectId, userId);
 
-    const bddOutput = await this.aiService.convertToBdd(request.rawOutput);
+    const scenarioText = request.scenarios
+      .map(
+        (s) =>
+          `[${s.id}] Senaryo: ${s.title}\nÖn Koşullar: ${s.preconditions}\nAdımlar:\n${s.steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}\nBeklenen Sonuç: ${s.expectedResult}`,
+      )
+      .join('\n\n---\n\n');
 
-    return { bddOutput };
+    const framework = request.framework ?? 'cucumber';
+    const results = await this.aiService.convertToCode(scenarioText, framework);
+
+    return { framework, results };
   }
 
   async save(
-    request: SaveScenarioRequest,
+    request: SaveScenariosRequest,
     userId: string,
-  ): Promise<ScenarioResponse> {
+  ): Promise<ScenarioResponse[]> {
     await this.projectsService.findOne(request.projectId, userId);
-    return this.prisma.testScenario.create({
-      data: {
-        title: request.title,
-        input: request.input,
-        rawOutput: request.rawOutput,
-        bddOutput: request.bddOutput,
-        sourceType: request.sourceType ?? null,
-        sourceRef: request.sourceRef ?? null,
-        projectId: request.projectId,
-      },
-    });
+
+    const saved: ScenarioResponse[] = [];
+
+    for (const s of request.scenarios) {
+      const rawOutput = JSON.stringify({
+        category: s.category,
+        priority: s.priority,
+        preconditions: s.preconditions,
+        steps: s.steps,
+        expectedResult: s.expectedResult,
+      });
+
+      const bddOutput = s.bdd ? JSON.stringify(s.bdd) : '';
+
+      const record = await this.prisma.testScenario.create({
+        data: {
+          title: s.title,
+          input: request.input,
+          rawOutput,
+          bddOutput,
+          sourceType: request.sourceType ?? null,
+          sourceRef: request.sourceRef ?? null,
+          projectId: request.projectId,
+        },
+      });
+
+      saved.push(record);
+    }
+
+    return saved;
   }
 
   private buildJiraInput(issue: {
@@ -221,7 +248,11 @@ export class ScenariosService {
       let aiError: string | undefined;
 
       try {
-        bddOutput = await this.aiService.convertToBdd(input);
+        const codeResults = await this.aiService.convertToCode(
+          input,
+          'cucumber',
+        );
+        bddOutput = JSON.stringify(codeResults);
       } catch (error) {
         aiError = error instanceof Error ? error.message : 'BDD dönüşüm hatası';
       }

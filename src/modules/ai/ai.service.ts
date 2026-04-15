@@ -1,56 +1,104 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import {
+  GeneratedScenarioItem,
+  CodeGenerationItem,
+} from '../scenarios/models/scenario.response';
 
 const execFileAsync = promisify(execFile);
+const MAX_BUFFER = 5 * 1024 * 1024;
 
 @Injectable()
 export class AiService {
-  private async runClaude(
+  private readonly promptsDir = join(__dirname, 'prompts');
+
+  private readPrompt(filename: string): string {
+    return readFileSync(join(this.promptsDir, filename), 'utf-8').trim();
+  }
+
+  private async runClaudeWithSchema(
     systemPrompt: string,
     userPrompt: string,
+    jsonSchema: string,
     model = 'sonnet',
   ): Promise<string> {
-    const { stdout } = await execFileAsync('claude', [
-      '-p',
-      userPrompt,
-      '--system-prompt',
-      systemPrompt,
-      '--model',
-      model,
-      '--output-format',
-      'text',
-    ]);
+    const { stdout } = await execFileAsync(
+      'claude',
+      [
+        '-p',
+        userPrompt,
+        '--system-prompt',
+        systemPrompt,
+        '--model',
+        model,
+        '--output-format',
+        'json',
+        '--json-schema',
+        jsonSchema,
+      ],
+      { maxBuffer: MAX_BUFFER },
+    );
     return stdout.trim();
   }
 
-  async generateTestScenario(input: string): Promise<string> {
-    const systemPrompt =
-      'Sen bir kıdemli QA mühendisisin. Kapsamlı test senaryoları üretirsin.';
+  async generateTestScenario(input: string): Promise<GeneratedScenarioItem[]> {
+    const systemPrompt = this.readPrompt('generate-scenario.system.txt');
+    const userTemplate = this.readPrompt('generate-scenario.user.txt');
+    const schema = this.readPrompt('generate-scenario.schema.json');
 
-    const userPrompt = `Aşağıdaki açıklama için kapsamlı test senaryoları üret.
+    const userPrompt = userTemplate.replace('{{input}}', input);
 
-Açıklama: ${input}
+    const raw = await this.runClaudeWithSchema(
+      systemPrompt,
+      userPrompt,
+      schema,
+    );
 
-Şu başlıkları içeren test senaryoları yaz:
-- Happy path (başarılı akış)
-- Edge case'ler (sınır durumlar)
-- Negatif senaryolar (hata durumları)
-
-Her senaryo için: Senaryo adı, ön koşullar, adımlar, beklenen sonuç.`;
-
-    return this.runClaude(systemPrompt, userPrompt);
+    const parsed = JSON.parse(raw) as {
+      structured_output?: { scenarios?: GeneratedScenarioItem[] };
+    };
+    return parsed.structured_output?.scenarios ?? [];
   }
 
-  async convertToBdd(rawScenario: string): Promise<string> {
-    const systemPrompt =
-      'Sen bir BDD uzmanısın. Test senaryolarını Gherkin formatına dönüştürürsün.';
+  async convertToCode(
+    rawScenario: string,
+    framework: string,
+  ): Promise<CodeGenerationItem[]> {
+    const frameworkDir = join(this.promptsDir, 'frameworks', framework);
 
-    const userPrompt = `Aşağıdaki test senaryolarını Gherkin BDD formatına (Feature, Scenario, Given, When, Then) dönüştür. Sadece Gherkin formatında çıktı ver.
+    if (!existsSync(frameworkDir)) {
+      throw new BadRequestException(`Desteklenmeyen framework: ${framework}`);
+    }
 
-Test Senaryoları:
-${rawScenario}`;
+    const systemPrompt = readFileSync(
+      join(frameworkDir, 'system.txt'),
+      'utf-8',
+    ).trim();
+    const userTemplate = readFileSync(
+      join(frameworkDir, 'user.txt'),
+      'utf-8',
+    ).trim();
+    const schema = readFileSync(
+      join(frameworkDir, 'schema.json'),
+      'utf-8',
+    ).trim();
 
-    return this.runClaude(systemPrompt, userPrompt);
+    const userPrompt = userTemplate.replace('{{input}}', rawScenario);
+
+    const raw = await this.runClaudeWithSchema(
+      systemPrompt,
+      userPrompt,
+      schema,
+    );
+
+    const parsed = JSON.parse(raw) as {
+      structured_output?: { results?: CodeGenerationItem[] };
+    };
+
+    const results = parsed.structured_output?.results ?? [];
+    return results.map((r) => ({ ...r, framework }));
   }
 }

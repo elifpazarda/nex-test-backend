@@ -1,12 +1,30 @@
+export interface GeneratedScenarioItem {
+  id: string;
+  title: string;
+  category: 'happy_path' | 'edge_case' | 'negative';
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  preconditions: string;
+  steps: string[];
+  expectedResult: string;
+}
+
 export interface GenerateScenarioResponse {
-  rawOutput: string;
+  scenarios: GeneratedScenarioItem[];
   input: string;
   sourceType: string;
   sourceRef?: string;
 }
 
+export interface CodeGenerationItem {
+  scenarioId: string;
+  framework: string;
+  language: string;
+  code: string;
+}
+
 export interface ConvertBddResponse {
-  bddOutput: string;
+  framework: string;
+  results: CodeGenerationItem[];
 }
 
 export interface ScenarioResponse {

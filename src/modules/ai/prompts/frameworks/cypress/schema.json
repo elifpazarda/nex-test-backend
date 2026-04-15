@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scenarioId": { "type": "string", "description": "Orijinal senaryo ID'si (TC-001 gibi)" },
+          "code": { "type": "string", "description": "Calistirilabilir test kodu" },
+          "language": { "type": "string", "description": "Programlama dili (typescript, javascript)" }
+        },
+        "required": ["scenarioId", "code", "language"]
+      }
+    }
+  },
+  "required": ["results"]
+}

@@ -1,0 +1,32 @@
+Aşağıdaki test senaryolarını çalıştırılabilir Cypress test koduna dönüştür.
+
+Her senaryo için:
+- scenarioId: Orijinal senaryo ID'sini koru (TC-001 gibi)
+- language: "typescript"
+- code: Cypress API'leri ile çalıştırılabilir test kodu
+
+Kod formatı şu şekilde olmalı:
+- describe ile grupla
+- it() blokları içinde test adımlarını yaz
+- cy.visit(), cy.get(), cy.contains(), cy.click() gibi Cypress komutlarını kullan
+- Assertion'lar için should() kullan
+
+Örnek çıktı formatı:
+```
+describe('Login', () => {
+  beforeEach(() => {
+    cy.visit('/login');
+  });
+
+  it('should login with valid credentials', () => {
+    cy.get('[data-testid="email"]').type('test@example.com');
+    cy.get('[data-testid="password"]').type('Test123!');
+    cy.get('button[type="submit"]').click();
+    cy.url().should('include', '/dashboard');
+    cy.get('[data-testid="user-name"]').should('be.visible');
+  });
+});
+```
+
+Test Senaryoları:
+{{input}}

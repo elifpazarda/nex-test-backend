@@ -1,6 +1,8 @@
 import {
   IsString,
   IsNotEmpty,
+  IsArray,
+  ValidateNested,
   MinLength,
   MaxLength,
   IsOptional,
@@ -8,7 +10,7 @@ import {
   IsEnum,
   IsDateString,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export enum ExportFormat {
   EXCEL = 'excel',
@@ -74,36 +76,96 @@ export class ImportExcelRequest {
   saveResults?: boolean;
 }
 
+export class ScenarioItemInput {
+  @IsString()
+  @IsNotEmpty()
+  id: string;
+
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
+  category: string;
+
+  @IsString()
+  @IsNotEmpty()
+  priority: string;
+
+  @IsString()
+  preconditions: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  steps: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  expectedResult: string;
+}
+
+export enum TestFramework {
+  CUCUMBER = 'cucumber',
+  PLAYWRIGHT = 'playwright',
+  CYPRESS = 'cypress',
+}
+
 export class ConvertBddRequest {
   @IsString()
   @IsNotEmpty()
   projectId: string;
 
-  @IsString()
-  @IsNotEmpty()
-  rawOutput: string;
+  @IsOptional()
+  @IsEnum(TestFramework)
+  framework?: TestFramework = TestFramework.CUCUMBER;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScenarioItemInput)
+  scenarios: ScenarioItemInput[];
 }
 
-export class SaveScenarioRequest {
-  @IsString()
-  @IsNotEmpty()
-  projectId: string;
-
+export class SaveScenarioItemInput {
   @IsString()
   @MinLength(2)
   title: string;
 
   @IsString()
   @IsNotEmpty()
+  category: string;
+
+  @IsString()
+  @IsNotEmpty()
+  priority: string;
+
+  @IsString()
+  preconditions: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  steps: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  expectedResult: string;
+
+  @IsOptional()
+  bdd?: {
+    framework: string;
+    language: string;
+    code: string;
+  };
+}
+
+export class SaveScenariosRequest {
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
+
+  @IsString()
+  @IsNotEmpty()
   input: string;
-
-  @IsString()
-  @IsNotEmpty()
-  rawOutput: string;
-
-  @IsString()
-  @IsNotEmpty()
-  bddOutput: string;
 
   @IsString()
   @IsOptional()
@@ -112,4 +174,9 @@ export class SaveScenarioRequest {
   @IsString()
   @IsOptional()
   sourceRef?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SaveScenarioItemInput)
+  scenarios: SaveScenarioItemInput[];
 }

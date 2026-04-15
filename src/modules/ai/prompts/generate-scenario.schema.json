@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "TC-001 formatında" },
+          "title": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["happy_path", "edge_case", "negative"]
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "preconditions": { "type": "string" },
+          "steps": { "type": "array", "items": { "type": "string" } },
+          "expectedResult": { "type": "string" }
+        },
+        "required": ["id", "title", "category", "priority", "preconditions", "steps", "expectedResult"]
+      }
+    }
+  },
+  "required": ["scenarios"]
+}
