@@ -1,6 +1,10 @@
+export interface JiraAuthUrlResponse {
+  authUrl: string;
+}
+
 export interface JiraConnectionResponse {
-  baseUrl: string;
-  email: string;
+  siteUrl: string;
+  siteName: string;
   connectedAt: string;
   updatedAt: string;
 }

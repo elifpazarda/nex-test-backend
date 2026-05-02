@@ -9,7 +9,7 @@ flowchart LR
 
     E -->|"Hazir Senaryo"| F1["Yapistirir"]
     E -->|"Metin"| F2["Metin Girer"]
-    E -->|"Jira"| F3["Issue Key"]
+    E -->|"Jira"| F3["OAuth Baglan + Issue Key"]
     E -->|"Excel"| F4["Excel Yukler"]
     E -->|"PDF"| F5["PDF Yukler"]
 
@@ -40,7 +40,7 @@ flowchart LR
 3. **Kaynak Seç** — 5 farklı yol:
    - **Hazır Senaryo**: Kullanıcı test senaryosunu yapıştırır (Claude üretmez)
    - **Metin Girişi**: Kullanıcı metin girer → Claude test senaryosu üretir
-   - **Jira**: Issue key girer → Claude test senaryosu üretir
+   - **Jira**: OAuth ile bağlanır → Issue key girer → Claude test senaryosu üretir
    - **Excel**: Dosya yükler → Claude test senaryosu üretir
    - **PDF**: Dosya yükler → Claude test senaryosu üretir
 4. **Senaryo Gösterilir** → Kullanıcı düzenler

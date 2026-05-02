@@ -69,8 +69,11 @@ Sunucu `http://localhost:3001/api` adresinde calisir.
 | `JWT_REFRESH_SECRET` | Refresh token imza anahtari | Rastgele uzun bir string |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token suresi | `7d` |
 | `ANTHROPIC_API_KEY` | Claude API anahtari | `sk-ant-...` |
-| `JIRA_TOKEN_ENCRYPTION_KEY` | Jira API token sifreleme anahtari (64 char hex) | `openssl rand -hex 32` cikisini kullan |
-| `FRONTEND_URL` | CORS icin frontend adresi | `http://localhost:3000` |
+| `JIRA_TOKEN_ENCRYPTION_KEY` | Jira token sifreleme anahtari (64 char hex) | `openssl rand -hex 32` cikisini kullan |
+| `ATLASSIAN_CLIENT_ID` | Atlassian OAuth app client ID | Developer Console'dan al |
+| `ATLASSIAN_CLIENT_SECRET` | Atlassian OAuth app client secret | Developer Console'dan al |
+| `ATLASSIAN_CALLBACK_URL` | OAuth callback URL | `http://localhost:3001/api/jira/callback` |
+| `FRONTEND_URL` | CORS ve OAuth redirect icin frontend adresi | `http://localhost:3000` |
 
 ---
 
@@ -185,7 +188,7 @@ Tum endpointler `/api` prefix'i altinda.
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
 | POST | /api/scenarios/generate | JWT | Claude ile text'ten senaryo uret (kaydetmez) |
-| POST | /api/scenarios/generate-from-jira | JWT | Jira issue'dan senaryo uret (kaydetmez) |
+| POST | /api/scenarios/generate/jira | JWT | Jira issue'dan senaryo uret (kaydetmez) |
 | POST | /api/scenarios/import-excel | JWT | Excel (Xray formati) dosyasindan senaryo import |
 | POST | /api/scenarios | JWT | Senaryoyu kaydet (manuel ya da uretilmis) |
 | GET | /api/scenarios/project/:id | JWT | Projenin senaryolari |
@@ -198,34 +201,35 @@ Tum endpointler `/api` prefix'i altinda.
 
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
-| POST | /api/jira/connection | JWT | Jira baglantisi kur (baseUrl + email + apiToken); token kaydedilmeden once test edilir |
+| GET | /api/jira/auth-url | JWT | Atlassian OAuth 2.0 yetkilendirme URL'i doner |
+| GET | /api/jira/callback | - | Atlassian OAuth callback (browser redirect) |
 | GET | /api/jira/connection | JWT | Mevcut baglanti bilgisi (token dondurulmez) |
 | DELETE | /api/jira/connection | JWT | Baglantiyi sil |
 
-**Jira'dan senaryo uretme akisi:**
+**Jira baglanti akisi (OAuth 2.0):**
 
-1. [Atlassian hesabindan](https://id.atlassian.com/manage-profile/security/api-tokens) bir API token olustur
-2. `POST /api/jira/connection` ile bagla:
-   ```json
-   {
-     "baseUrl": "https://sirket.atlassian.net",
-     "email": "sen@sirket.com",
-     "apiToken": "..."
-   }
-   ```
-3. `POST /api/scenarios/generate-from-jira` ile issue'dan senaryo uret:
-   ```json
-   { "projectId": "...", "issueKey": "PROJ-123" }
-   ```
-4. Donen ciktiyi `POST /api/scenarios` ile kaydet (opsiyonel: `sourceType: "jira"`, `sourceRef: "PROJ-123"`)
+1. `GET /api/jira/auth-url` cagir → Atlassian OAuth URL'i al
+2. Kullaniciyi bu URL'e yonlendir → Atlassian'da giris yapar, izin verir
+3. Atlassian otomatik olarak `GET /api/jira/callback` adresine yonlendirir
+4. Backend token'lari alir, sifreli olarak DB'ye kaydeder
+5. Kullanici frontend'e yonlendirilir (`{FRONTEND_URL}/jira/callback?success=true`)
 
-Token AES-256-GCM ile sifreli saklanir (`JIRA_TOKEN_ENCRYPTION_KEY` ile). Token hicbir response'da geri donmez.
+**Jira'dan senaryo uretme:**
+
+```json
+POST /api/scenarios/generate/jira
+{ "projectId": "...", "issueKey": "PROJ-123" }
+```
+
+**Token yonetimi:**
+
+- Access token 1 saatte expire olur, otomatik refresh edilir
+- Refresh basarisizsa baglanti silinir, kullanici yeniden baglanmali
+- Token'lar AES-256-GCM ile sifreli saklanir (`JIRA_TOKEN_ENCRYPTION_KEY`)
+- Token hicbir response'da geri donmez
 
 **Onkosullar:**
 
-- **Jira Cloud zorunlu.** Servis `/rest/api/3/` endpoint'lerini kullanir; bu yalnizca Cloud'da (`*.atlassian.net`) vardir. Jira Server / Data Center destegi yoktur.
-- **`baseUrl` format:** Sadece scheme + domain. Sonunda slash, path veya `/jira` olmamali.
-  - ✅ Dogru: `https://sirket.atlassian.net`
-  - ❌ Yanlis: `https://sirket.atlassian.net/`, `https://sirket.atlassian.net/jira`
-- **`issueKey` format:** `[A-Z][A-Z0-9]+-\d+` regex'ine uymali (orn: `PROJ-123`, `CLAR-131`). Kucuk harf veya format disi string `400` doner.
-- **Jira email'i** bizim backend kullanici email'inden farkli olabilir; ikisi bagimsiz sistemlerdir.
+- **Jira Cloud zorunlu.** Servis Atlassian Cloud API kullanir; Jira Server / Data Center destegi yoktur.
+- **Atlassian OAuth app gerekli.** [Developer Console](https://developer.atlassian.com/console)'da OAuth 2.0 app olustur, callback URL olarak `ATLASSIAN_CALLBACK_URL` degerini ekle, `read:jira-work` scope'u ver.
+- **`issueKey` format:** `[A-Z][A-Z0-9]+-\d+` regex'ine uymali (orn: `PROJ-123`, `QA-42`). Format disi string `400` doner.

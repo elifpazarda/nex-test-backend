@@ -1,14 +1,11 @@
-import { IsEmail, IsNotEmpty, IsString, IsUrl } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
 
-export class SaveJiraConnectionRequest {
-  @IsUrl({ require_tld: false })
+export class JiraOAuthCallbackQuery {
+  @IsString()
   @IsNotEmpty()
-  baseUrl: string;
-
-  @IsEmail()
-  email: string;
+  code: string;
 
   @IsString()
   @IsNotEmpty()
-  apiToken: string;
+  state: string;
 }

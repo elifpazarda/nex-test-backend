@@ -4,14 +4,24 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoUtil } from '../../common/utils/crypto.util';
 import { DateUtil } from '../../common/utils/date.util';
-import { SaveJiraConnectionRequest } from './models/jira.request';
 import {
+  JiraAuthUrlResponse,
   JiraConnectionResponse,
   JiraIssueResponse,
 } from './models/jira.response';
+
+const ATLASSIAN_AUTH_URL = 'https://auth.atlassian.com/authorize';
+const ATLASSIAN_TOKEN_URL = 'https://auth.atlassian.com/oauth/token';
+const ATLASSIAN_RESOURCES_URL =
+  'https://api.atlassian.com/oauth/token/accessible-resources';
+const ATLASSIAN_API_BASE = 'https://api.atlassian.com/ex/jira';
+
+const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 dakika
+const TOKEN_REFRESH_BUFFER_MS = 60_000; // 60 saniye
 
 interface AdfNode {
   type?: string;
@@ -20,35 +30,92 @@ interface AdfNode {
   attrs?: Record<string, unknown>;
 }
 
+interface AtlassianTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  scope: string;
+}
+
+interface AtlassianSite {
+  id: string;
+  url: string;
+  name: string;
+  scopes: string[];
+  avatarUrl: string;
+}
+
 @Injectable()
 export class JiraService {
-  constructor(private prisma: PrismaService) {}
+  private readonly clientId: string;
+  private readonly clientSecret: string;
+  private readonly callbackUrl: string;
 
-  async saveConnection(
-    userId: string,
-    request: SaveJiraConnectionRequest,
-  ): Promise<JiraConnectionResponse> {
-    const baseUrl = this.normalizeBaseUrl(request.baseUrl);
-    await this.verifyCredentials(baseUrl, request.email, request.apiToken);
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {
+    this.clientId = this.configService.getOrThrow<string>(
+      'ATLASSIAN_CLIENT_ID',
+    );
+    this.clientSecret = this.configService.getOrThrow<string>(
+      'ATLASSIAN_CLIENT_SECRET',
+    );
+    this.callbackUrl = this.configService.getOrThrow<string>(
+      'ATLASSIAN_CALLBACK_URL',
+    );
+  }
 
-    const encryptedToken = CryptoUtil.encrypt(request.apiToken);
+  getAuthUrl(userId: string): JiraAuthUrlResponse {
+    const statePayload = JSON.stringify({ userId, timestamp: Date.now() });
+    const encryptedState = CryptoUtil.encrypt(statePayload);
 
-    const connection = await this.prisma.jiraConnection.upsert({
+    const params = new URLSearchParams({
+      audience: 'api.atlassian.com',
+      client_id: this.clientId,
+      scope: 'read:jira-work offline_access',
+      redirect_uri: this.callbackUrl,
+      state: this.toBase64Url(encryptedState),
+      response_type: 'code',
+      prompt: 'consent',
+    });
+
+    return { authUrl: `${ATLASSIAN_AUTH_URL}?${params.toString()}` };
+  }
+
+  async handleCallback(code: string, state: string): Promise<void> {
+    const userId = this.decryptAndValidateState(state);
+
+    const tokens = await this.exchangeCodeForTokens(code);
+
+    const sites = await this.getAccessibleSites(tokens.access_token);
+    if (sites.length === 0) {
+      throw new BadRequestException('Erisilebilir Jira sitesi bulunamadi');
+    }
+
+    const site = sites[0];
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+    await this.prisma.jiraConnection.upsert({
       where: { userId },
       create: {
         userId,
-        baseUrl,
-        email: request.email,
-        apiToken: encryptedToken,
+        cloudId: site.id,
+        siteUrl: site.url,
+        siteName: site.name,
+        accessToken: CryptoUtil.encrypt(tokens.access_token),
+        refreshToken: CryptoUtil.encrypt(tokens.refresh_token),
+        expiresAt,
       },
       update: {
-        baseUrl,
-        email: request.email,
-        apiToken: encryptedToken,
+        cloudId: site.id,
+        siteUrl: site.url,
+        siteName: site.name,
+        accessToken: CryptoUtil.encrypt(tokens.access_token),
+        refreshToken: CryptoUtil.encrypt(tokens.refresh_token),
+        expiresAt,
       },
     });
-
-    return this.toResponse(connection);
   }
 
   async getConnection(userId: string): Promise<JiraConnectionResponse> {
@@ -84,22 +151,23 @@ export class JiraService {
     });
     if (!connection) {
       throw new NotFoundException(
-        'Jira baglantisi yok. Once /api/jira/connection ile baglan',
+        'Jira baglantisi yok. Once Jira ile baglanin.',
       );
     }
 
-    const token = CryptoUtil.decrypt(connection.apiToken);
-    const url = `${connection.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}`;
+    const accessToken = await this.getValidAccessToken(connection);
+
+    const url = `${ATLASSIAN_API_BASE}/${connection.cloudId}/rest/api/3/issue/${encodeURIComponent(issueKey)}`;
     const response = await fetch(url, {
       headers: {
-        Authorization: this.basicAuthHeader(connection.email, token),
+        Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json',
       },
     });
 
     if (response.status === 401 || response.status === 403) {
       throw new UnauthorizedException(
-        'Jira yetkilendirme hatasi. Baglantiyi yeniden kur.',
+        'Jira yetkilendirme hatasi. Baglantiyi yeniden kurun.',
       );
     }
     if (response.status === 404) {
@@ -127,55 +195,157 @@ export class JiraService {
       description: this.adfToPlainText(data.fields.description),
       issueType: data.fields.issuetype?.name ?? '',
       status: data.fields.status?.name ?? '',
-      url: `${connection.baseUrl}/browse/${data.key}`,
+      url: `${connection.siteUrl}/browse/${data.key}`,
     };
   }
 
-  private async verifyCredentials(
-    baseUrl: string,
-    email: string,
-    apiToken: string,
-  ): Promise<void> {
-    const response = await fetch(`${baseUrl}/rest/api/3/myself`, {
+  // --- Private: OAuth helpers ---
+
+  private decryptAndValidateState(state: string): string {
+    let payload: { userId: string; timestamp: number };
+
+    try {
+      const decrypted = CryptoUtil.decrypt(this.fromBase64Url(state));
+      payload = JSON.parse(decrypted) as { userId: string; timestamp: number };
+    } catch {
+      throw new BadRequestException('Gecersiz OAuth state parametresi');
+    }
+
+    if (!payload.userId || !payload.timestamp) {
+      throw new BadRequestException('Gecersiz OAuth state icerigi');
+    }
+
+    const age = Date.now() - payload.timestamp;
+    if (age > STATE_MAX_AGE_MS) {
+      throw new BadRequestException(
+        'OAuth state suresi doldu. Lutfen tekrar deneyin.',
+      );
+    }
+
+    return payload.userId;
+  }
+
+  private async exchangeCodeForTokens(
+    code: string,
+  ): Promise<AtlassianTokenResponse> {
+    const response = await fetch(ATLASSIAN_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+        code,
+        redirect_uri: this.callbackUrl,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(
+        'Atlassian token degisimi basarisiz. Lutfen tekrar deneyin.',
+      );
+    }
+
+    return (await response.json()) as AtlassianTokenResponse;
+  }
+
+  private async getAccessibleSites(
+    accessToken: string,
+  ): Promise<AtlassianSite[]> {
+    const response = await fetch(ATLASSIAN_RESOURCES_URL, {
       headers: {
-        Authorization: this.basicAuthHeader(email, apiToken),
+        Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json',
       },
     });
-    if (response.status === 401 || response.status === 403) {
-      throw new UnauthorizedException(
-        'Jira kimlik dogrulama basarisiz. Email ve API token kontrol et.',
-      );
-    }
+
     if (!response.ok) {
-      throw new BadRequestException(
-        `Jira baglanti testi basarisiz: ${response.status} ${response.statusText}`,
+      throw new BadRequestException('Atlassian site bilgisi alinamadi');
+    }
+
+    return (await response.json()) as AtlassianSite[];
+  }
+
+  private async getValidAccessToken(connection: {
+    userId: string;
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: Date;
+  }): Promise<string> {
+    const timeRemaining = connection.expiresAt.getTime() - Date.now();
+
+    if (timeRemaining > TOKEN_REFRESH_BUFFER_MS) {
+      return CryptoUtil.decrypt(connection.accessToken);
+    }
+
+    const refreshToken = CryptoUtil.decrypt(connection.refreshToken);
+
+    const response = await fetch(ATLASSIAN_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'refresh_token',
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
+        refresh_token: refreshToken,
+      }),
+    });
+
+    if (!response.ok) {
+      await this.prisma.jiraConnection.delete({
+        where: { userId: connection.userId },
+      });
+      throw new UnauthorizedException(
+        'Jira oturumu suresi doldu. Lutfen yeniden baglanin.',
       );
     }
+
+    const data = (await response.json()) as AtlassianTokenResponse;
+    const newExpiresAt = new Date(Date.now() + data.expires_in * 1000);
+
+    await this.prisma.jiraConnection.update({
+      where: { userId: connection.userId },
+      data: {
+        accessToken: CryptoUtil.encrypt(data.access_token),
+        refreshToken: CryptoUtil.encrypt(data.refresh_token),
+        expiresAt: newExpiresAt,
+      },
+    });
+
+    return data.access_token;
   }
 
-  private basicAuthHeader(email: string, token: string): string {
-    const credentials = Buffer.from(`${email}:${token}`).toString('base64');
-    return `Basic ${credentials}`;
+  // --- Private: Base64 URL-safe encoding ---
+
+  private toBase64Url(base64: string): string {
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
-  private normalizeBaseUrl(baseUrl: string): string {
-    return baseUrl.replace(/\/+$/, '');
+  private fromBase64Url(base64url: string): string {
+    let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    return base64;
   }
+
+  // --- Private: Response helper ---
 
   private toResponse(connection: {
-    baseUrl: string;
-    email: string;
+    siteUrl: string;
+    siteName: string;
     connectedAt: Date;
     updatedAt: Date;
   }): JiraConnectionResponse {
     return {
-      baseUrl: connection.baseUrl,
-      email: connection.email,
+      siteUrl: connection.siteUrl,
+      siteName: connection.siteName,
       connectedAt: DateUtil.format(connection.connectedAt),
       updatedAt: DateUtil.format(connection.updatedAt),
     };
   }
+
+  // --- Private: ADF parser (unchanged) ---
 
   private adfToPlainText(adf: AdfNode | string | null | undefined): string {
     if (!adf) return '';

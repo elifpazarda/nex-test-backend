@@ -75,10 +75,10 @@ src/
       ai.service.ts          # Anthropic SDK: senaryo uret, BDD donustur, kalite degerlendir
     jira/
       models/
-        jira.request.ts      # SaveJiraConnectionRequest
-        jira.response.ts     # JiraConnectionResponse, JiraIssueResponse
-      jira.service.ts        # Jira REST client, ADF → plain text, token encrypt/decrypt
-      jira.controller.ts     # /jira/connection CRUD
+        jira.request.ts      # JiraOAuthCallbackQuery
+        jira.response.ts     # JiraAuthUrlResponse, JiraConnectionResponse, JiraIssueResponse
+      jira.service.ts        # Atlassian OAuth 2.0, Jira REST client, ADF → plain text
+      jira.controller.ts     # OAuth + connection endpointleri
 ```
 
 ## API Endpointleri
@@ -102,8 +102,9 @@ Tum endpointler `/api` prefix'i altinda.
 | GET | /api/scenarios/project/:id | JWT | Proje senaryolari |
 | GET | /api/scenarios/:id | JWT | Senaryo detay |
 | DELETE | /api/scenarios/:id | JWT | Senaryo sil |
-| POST | /api/jira/connection | JWT | Jira baglantisi kur (token test edilir) |
-| GET | /api/jira/connection | JWT | Jira baglanti bilgisi (token doner degil) |
+| GET | /api/jira/auth-url | JWT | Atlassian OAuth URL'i doner |
+| GET | /api/jira/callback | - | Atlassian OAuth callback (browser redirect) |
+| GET | /api/jira/connection | JWT | Jira baglanti bilgisi |
 | DELETE | /api/jira/connection | JWT | Jira baglantisini sil |
 
 ## Kodlama Standartlari
