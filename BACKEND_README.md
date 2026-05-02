@@ -1,20 +1,21 @@
 # nex-test-backend
 
-AI destekli test senaryosu uretim platformunun backend servisi. Kullanicilar proje olusturur, dogal dilde test aciklamasi yazar ve Claude AI otomatik olarak test senaryolari, BDD (Gherkin) formati ve kalite degerlendirmesi uretir.
+AI destekli test senaryosu uretim platformunun backend servisi. Kullanicilar proje olusturur, senaryo gruplariyla organize eder, dogal dilde / Jira issue / Excel / PDF'den test aciklamasi verir ve Claude AI otomatik olarak test senaryolari, BDD (Gherkin) formati ve kalite degerlendirmesi uretir.
 
 ## Stack
 
-- **Framework:** NestJS 11 + TypeScript
+- **Framework:** NestJS 11 + TypeScript (strict mode)
 - **Veritabani:** PostgreSQL + Prisma 7
-- **Auth:** JWT (Passport)
+- **Auth:** JWT (Passport) — access + refresh token
 - **AI:** Anthropic Claude API
+- **Rate Limiting:** @nestjs/throttler (global 100/dk, AI endpointleri 5/dk)
 - **Test:** Jest
 
 ---
 
 ## Gereksinimler
 
-| Araç | Versiyon |
+| Arac | Versiyon |
 |------|----------|
 | Node.js | >= 18 |
 | npm | >= 9 |
@@ -96,26 +97,27 @@ Sunucu `http://localhost:3001/api` adresinde calisir.
 
 ```
 src/
-  main.ts                # Bootstrap, global interceptor/filter/pipe
-  app.module.ts          # Root module
+  main.ts                # Bootstrap, global interceptor/filter/pipe, port 3001
+  app.module.ts          # Root module (ConfigModule global, ThrottlerModule)
   prisma/                # Global Prisma service
   common/
     guards/              # JwtAuthGuard
     decorators/          # @CurrentUser() decorator
     interceptors/        # ResponseInterceptor (response wrapper)
     filters/             # HttpExceptionFilter (error wrapper)
-    models/              # ApiResponse<T> interface
+    models/              # ApiResponse<T> interface, PaginationQuery, PaginatedResponse
   modules/
-    auth/                # Kayit, giris, JWT token yonetimi
+    auth/                # Kayit, giris, refresh token, JWT yonetimi
     projects/            # Proje CRUD islemleri
-    scenarios/           # Test senaryosu uretim, import/export, yonetim
+    scenario-groups/     # Senaryo grubu CRUD (BUG, FEATURE, REGRESSION, vb.)
+    scenarios/           # Test senaryosu uretim (text/jira/excel/pdf), import/export, yonetim
     ai/                  # Anthropic Claude API entegrasyonu
-    jira/                # Jira baglantisi ve issue cekme
+    jira/                # Atlassian OAuth 2.0, Jira baglantisi ve issue cekme
 ```
 
 ### Assets (Font)
 
-`src/assets/` klasoru `.gitignore`'da, repo'da takip edilmez. PDF export kullanacaksan **NotoSans-Regular.ttf** dosyasini [Google Fonts](https://fonts.google.com/noto/specimen/Noto+Sans) uzerinden indirip `src/assets/fonts/NotoSans-Regular.ttf` olarak kaydetmen gerekir. Font eksikse `/api/scenarios/export?format=pdf` endpoint'i hata doner.
+`src/assets/` klasoru `.gitignore`'da, repo'da takip edilmez. PDF export kullanacaksan **NotoSans-Regular.ttf** dosyasini [Google Fonts](https://fonts.google.com/noto/specimen/Noto+Sans) uzerinden indirip `src/assets/fonts/NotoSans-Regular.ttf` olarak kaydetmen gerekir. Font eksikse PDF export endpoint'i hata doner.
 
 ---
 
@@ -143,13 +145,38 @@ Tum endpointler ayni wrapper formatinda doner:
 }
 ```
 
+### Pagination
+
+Liste endpointleri (projects, scenario-groups, scenarios/group) pagination destekler:
+
+| Query Param | Varsayilan | Aciklama |
+|-------------|-----------|----------|
+| `page` | 1 | Sayfa numarasi |
+| `limit` | 20 | Sayfa basina kayit |
+
+Paginated response:
+```json
+{
+  "data": [...],
+  "meta": { "page": 1, "limit": 20, "total": 45, "totalPages": 3 }
+}
+```
+
 ---
 
 ## Veritabani
 
-Prisma ORM kullanilir. Schema: `prisma/schema.prisma`
+Prisma ORM kullanilir. Schema: `prisma/schema.prisma`, Config: `prisma.config.ts`
 
-**Modeller:** User, Project, TestScenario, JiraConnection
+**Modeller:** User, Project, ScenarioGroup, TestScenario, JiraConnection
+
+**Enum:** ScenarioGroupType — BUG, FEATURE, REGRESSION, SMOKE, INTEGRATION, E2E, PERFORMANCE, OTHER
+
+**Iliskiler:**
+```
+User (1) → (N) Project (1) → (N) ScenarioGroup (1) → (N) TestScenario
+User (1) → (1) JiraConnection
+```
 
 ```bash
 npx prisma generate                    # Client olustur
@@ -169,32 +196,71 @@ Tum endpointler `/api` prefix'i altinda.
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
 | POST | /api/auth/register | - | Kayit ol |
-| POST | /api/auth/login | - | Giris yap, token doner |
+| POST | /api/auth/login | - | Giris yap, access + refresh token doner |
+| POST | /api/auth/refresh | - | Refresh token ile yeni token cifti al |
 | GET | /api/auth/me | JWT | Aktif kullanici bilgisi |
-| POST | /api/auth/logout | JWT | Cikis |
+| POST | /api/auth/logout | JWT | Cikis (tokenVersion arttirir) |
 
 ### Projects — `/api/projects`
 
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
-| GET | /api/projects | JWT | Kullanicinin projeleri |
+| GET | /api/projects | JWT | Kullanicinin projeleri (paginated, senaryo/grup sayisiyla) |
 | POST | /api/projects | JWT | Proje olustur |
 | GET | /api/projects/:id | JWT | Proje detay |
 | PATCH | /api/projects/:id | JWT | Proje guncelle |
 | DELETE | /api/projects/:id | JWT | Proje sil |
 
-### Scenarios — `/api/scenarios`
+### Scenario Groups — `/api/scenario-groups`
 
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
-| POST | /api/scenarios/generate | JWT | Claude ile text'ten senaryo uret (kaydetmez) |
-| POST | /api/scenarios/generate/jira | JWT | Jira issue'dan senaryo uret (kaydetmez) |
+| POST | /api/scenario-groups | JWT | Senaryo grubu olustur (name, type, projectId) |
+| GET | /api/scenario-groups/project/:projectId | JWT | Proje gruplari (paginated, senaryo sayisiyla) |
+| GET | /api/scenario-groups/:id | JWT | Grup detay |
+| PATCH | /api/scenario-groups/:id | JWT | Grup guncelle |
+| DELETE | /api/scenario-groups/:id | JWT | Grup sil (cascade: senaryolar da silinir) |
+
+### Scenarios — `/api/scenarios`
+
+**Uretim (AI ile, kaydetmez — rate limit: 5/dk):**
+
+| Method | Endpoint | Auth | Aciklama |
+|--------|----------|------|----------|
+| POST | /api/scenarios/generate/text | JWT | Dogal dil aciklamasindan senaryo uret |
+| POST | /api/scenarios/generate/jira | JWT | Jira issue'dan senaryo uret |
+| POST | /api/scenarios/generate/excel | JWT | Excel dosyasindan senaryo uret (multipart file upload) |
+| POST | /api/scenarios/generate/pdf | JWT | PDF dosyasindan senaryo uret (multipart file upload) |
+| POST | /api/scenarios/convert-bdd | JWT | Mevcut senaryoyu BDD formatina donustur |
+
+**Kaydetme ve Import:**
+
+| Method | Endpoint | Auth | Aciklama |
+|--------|----------|------|----------|
+| POST | /api/scenarios | JWT | Senaryolari kaydet (groupId gerekli) |
 | POST | /api/scenarios/import-excel | JWT | Excel (Xray formati) dosyasindan senaryo import |
-| POST | /api/scenarios | JWT | Senaryoyu kaydet (manuel ya da uretilmis) |
-| GET | /api/scenarios/project/:id | JWT | Projenin senaryolari |
-| GET | /api/scenarios/:id | JWT | Senaryo detay |
-| GET | /api/scenarios/export/project/:projectId | JWT | Proje senaryolarini export (excel/pdf/json/feature) |
-| GET | /api/scenarios/export/:id | JWT | Tek senaryoyu export |
+
+**Listeleme ve Detay:**
+
+| Method | Endpoint | Auth | Aciklama |
+|--------|----------|------|----------|
+| GET | /api/scenarios/group/:groupId | JWT | Grubun senaryolari (paginated) |
+| GET | /api/scenarios/:id | JWT | Senaryo detay (proje ve grup bilgisiyle) |
+
+**Export:**
+
+| Method | Endpoint | Auth | Aciklama |
+|--------|----------|------|----------|
+| GET | /api/scenarios/export/all/:projectId | JWT | Projenin tum senaryolarini export et |
+| GET | /api/scenarios/export/group/:groupId | JWT | Grubun senaryolarini export et |
+| GET | /api/scenarios/export/:id | JWT | Tek senaryoyu export et |
+
+Export query parametresi: `?format=excel|pdf|json|feature`
+
+**Silme:**
+
+| Method | Endpoint | Auth | Aciklama |
+|--------|----------|------|----------|
 | DELETE | /api/scenarios/:id | JWT | Senaryo sil |
 
 ### Jira — `/api/jira`

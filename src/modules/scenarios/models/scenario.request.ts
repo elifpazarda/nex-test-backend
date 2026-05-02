@@ -67,7 +67,7 @@ export class GenerateFromFileRequest {
 export class ImportExcelRequest {
   @IsString()
   @IsNotEmpty()
-  projectId: string;
+  groupId: string;
 
   @IsOptional()
   @Transform(
@@ -161,7 +161,7 @@ export class SaveScenarioItemInput {
 export class SaveScenariosRequest {
   @IsString()
   @IsNotEmpty()
-  projectId: string;
+  groupId: string;
 
   @IsString()
   @IsNotEmpty()

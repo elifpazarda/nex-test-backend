@@ -15,6 +15,7 @@ import {
   FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { ScenariosService } from './scenarios.service';
 import {
@@ -30,9 +31,14 @@ import {
   GenerateScenarioResponse,
   ConvertBddResponse,
   ScenarioResponse,
+  ScenarioWithGroup,
   ScenarioWithProject,
   ExcelImportResponse,
 } from './models/scenario.response';
+import {
+  PaginationQuery,
+  PaginatedResponse,
+} from '../../common/models/pagination';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
@@ -42,6 +48,7 @@ import type { CurrentUserData } from '../../common/decorators/current-user.decor
 export class ScenariosController {
   constructor(private scenariosService: ScenariosService) {}
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/text')
   generateFromText(
     @Body() request: GenerateFromTextRequest,
@@ -50,6 +57,7 @@ export class ScenariosController {
     return this.scenariosService.generateFromText(request, user.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/jira')
   generateFromJira(
     @Body() request: GenerateFromJiraRequest,
@@ -58,6 +66,7 @@ export class ScenariosController {
     return this.scenariosService.generateFromJira(request, user.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/excel')
   @UseInterceptors(FileInterceptor('file'))
   generateFromExcel(
@@ -79,6 +88,7 @@ export class ScenariosController {
     return this.scenariosService.generateFromExcel(file, request, user.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/pdf')
   @UseInterceptors(FileInterceptor('file'))
   generateFromPdf(
@@ -97,6 +107,7 @@ export class ScenariosController {
     return this.scenariosService.generateFromPdf(file, request, user.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('convert-bdd')
   convertToBdd(
     @Body() request: ConvertBddRequest,
@@ -126,15 +137,32 @@ export class ScenariosController {
     return this.scenariosService.importExcel(file, request, user.id);
   }
 
-  @Get('export/project/:projectId')
-  async exportByProject(
+  @Get('export/all/:projectId')
+  async exportAll(
     @Param('projectId') projectId: string,
     @Query() query: ExportQueryRequest,
     @CurrentUser() user: CurrentUserData,
     @Res() res: Response,
   ): Promise<void> {
     const { buffer, filename, contentType } =
-      await this.scenariosService.exportByProject(projectId, query, user.id);
+      await this.scenariosService.exportAll(projectId, query, user.id);
+
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('export/group/:groupId')
+  async exportByGroup(
+    @Param('groupId') groupId: string,
+    @Query() query: ExportQueryRequest,
+    @CurrentUser() user: CurrentUserData,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename, contentType } =
+      await this.scenariosService.exportByGroup(groupId, query, user.id);
 
     res.set({
       'Content-Type': contentType,
@@ -168,12 +196,13 @@ export class ScenariosController {
     return this.scenariosService.save(request, user.id);
   }
 
-  @Get('project/:projectId')
-  findByProject(
-    @Param('projectId') projectId: string,
+  @Get('group/:groupId')
+  findByGroup(
+    @Param('groupId') groupId: string,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<ScenarioResponse[]> {
-    return this.scenariosService.findByProject(projectId, user.id);
+    @Query() pagination: PaginationQuery,
+  ): Promise<PaginatedResponse<ScenarioWithGroup>> {
+    return this.scenariosService.findByGroup(groupId, user.id, pagination);
   }
 
   @Get(':id')

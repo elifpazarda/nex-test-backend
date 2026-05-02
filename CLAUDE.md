@@ -50,15 +50,15 @@ src/
     decorators/        # @CurrentUser() decorator
     interceptors/      # ResponseInterceptor (API response wrapper)
     filters/           # HttpExceptionFilter (hata response wrapper)
-    models/            # ApiResponse<T> interface
+    models/            # ApiResponse<T> interface, PaginationQuery, PaginatedResponse
   modules/
     auth/
       models/
-        auth.request.ts    # RegisterRequest, LoginRequest
-        auth.response.ts   # UserResponse, AuthTokens
-      auth.service.ts      # Register, login, me, token generation
+        auth.request.ts    # RegisterRequest, LoginRequest, RefreshTokenRequest
+        auth.response.ts   # UserResponse, AuthTokens, JwtPayload
+      auth.service.ts      # Register, login, refresh, me, logout, token generation
       auth.controller.ts
-      jwt.strategy.ts      # Passport JWT strategy
+      jwt.strategy.ts      # Passport JWT strategy (tokenVersion dogrulamasi)
     projects/
       models/
         project.request.ts  # CreateProjectRequest, UpdateProjectRequest
@@ -67,12 +67,19 @@ src/
       projects.controller.ts
     scenarios/
       models/
-        scenario.request.ts    # GenerateScenarioRequest, SaveScenarioRequest
-        scenario.response.ts # ScenarioResponse, ScenarioWithProject
-      scenarios.service.ts   # AI entegrasyonu burada
+        scenario.request.ts    # GenerateFromTextRequest, GenerateFromJiraRequest, GenerateFromFileRequest, ConvertBddRequest, SaveScenariosRequest, ImportExcelRequest, ExportQueryRequest
+        scenario.response.ts   # GenerateScenarioResponse, ConvertBddResponse, ScenarioResponse, ScenarioWithGroup, ScenarioWithProject, ExcelImportResponse
+      scenarios.service.ts     # AI entegrasyonu, import/export, CRUD
       scenarios.controller.ts
+    scenario-groups/
+      models/
+        scenario-group.request.ts   # CreateScenarioGroupRequest, UpdateScenarioGroupRequest
+        scenario-group.response.ts  # ScenarioGroupResponse, ScenarioGroupWithCount
+      scenario-groups.service.ts    # CRUD + proje sahiplik kontrolu
+      scenario-groups.controller.ts
     ai/
-      ai.service.ts          # Anthropic SDK: senaryo uret, BDD donustur, kalite degerlendir
+      ai.service.ts          # Claude CLI: senaryo uret, kod donustur (framework bazli)
+      prompts/               # Sistem/kullanici prompt dosyalari ve JSON schemalari
     jira/
       models/
         jira.request.ts      # JiraOAuthCallbackQuery
@@ -89,17 +96,30 @@ Tum endpointler `/api` prefix'i altinda.
 |--------|----------|------|----------|
 | POST | /api/auth/register | - | Kayit |
 | POST | /api/auth/login | - | Giris, token doner |
+| POST | /api/auth/refresh | - | Refresh token ile yeni token cifti al |
 | GET | /api/auth/me | JWT | Kullanici bilgisi |
-| POST | /api/auth/logout | JWT | Cikis |
+| POST | /api/auth/logout | JWT | Cikis (tokenVersion arttirir) |
 | GET | /api/projects | JWT | Kullanicinin projeleri |
 | POST | /api/projects | JWT | Proje olustur |
 | GET | /api/projects/:id | JWT | Proje detay |
 | PATCH | /api/projects/:id | JWT | Proje guncelle |
 | DELETE | /api/projects/:id | JWT | Proje sil |
-| POST | /api/scenarios/generate | JWT | AI ile senaryo uret |
-| POST | /api/scenarios/generate-from-jira | JWT | Jira issue'dan AI ile senaryo uret |
-| POST | /api/scenarios | JWT | Senaryo kaydet |
-| GET | /api/scenarios/project/:id | JWT | Proje senaryolari |
+| POST | /api/scenario-groups | JWT | Senaryo grubu olustur |
+| GET | /api/scenario-groups/project/:projectId | JWT | Proje gruplari (senaryo sayisiyla) |
+| GET | /api/scenario-groups/:id | JWT | Grup detay |
+| PATCH | /api/scenario-groups/:id | JWT | Grup guncelle |
+| DELETE | /api/scenario-groups/:id | JWT | Grup sil (cascade) |
+| POST | /api/scenarios/generate/text | JWT | Dogal dilden AI ile senaryo uret |
+| POST | /api/scenarios/generate/jira | JWT | Jira issue'dan AI ile senaryo uret |
+| POST | /api/scenarios/generate/excel | JWT | Excel dosyasindan AI ile senaryo uret |
+| POST | /api/scenarios/generate/pdf | JWT | PDF dosyasindan AI ile senaryo uret |
+| POST | /api/scenarios/convert-bdd | JWT | Senaryoyu BDD/kod formatina donustur |
+| POST | /api/scenarios | JWT | Senaryo kaydet (groupId gerekli) |
+| POST | /api/scenarios/import-excel | JWT | Excel'den senaryo import et |
+| GET | /api/scenarios/group/:groupId | JWT | Grup senaryolari (paginated) |
+| GET | /api/scenarios/export/all/:projectId | JWT | Proje senaryolarini export et |
+| GET | /api/scenarios/export/group/:groupId | JWT | Grup senaryolarini export et |
+| GET | /api/scenarios/export/:id | JWT | Tek senaryoyu export et |
 | GET | /api/scenarios/:id | JWT | Senaryo detay |
 | DELETE | /api/scenarios/:id | JWT | Senaryo sil |
 | GET | /api/jira/auth-url | JWT | Atlassian OAuth URL'i doner |
@@ -168,5 +188,6 @@ Font eksikse `/api/scenarios/export?format=pdf` endpoint'i hata doner.
 
 - Schema: `prisma/schema.prisma`
 - Config: `prisma.config.ts` (Prisma 7 - URL burada tanimlaniyor)
-- Modeller: User, Project, TestScenario
+- Modeller: User, Project, ScenarioGroup, TestScenario
+- Enum: ScenarioGroupType (BUG, FEATURE, REGRESSION, SMOKE, INTEGRATION, E2E, PERFORMANCE, OTHER)
 - Schema degisikliginde `prisma generate` otomatik calisir (hook)

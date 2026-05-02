@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { ProjectsService } from '../projects/projects.service';
 import { JiraService } from '../jira/jira.service';
+import { ScenarioGroupsService } from '../scenario-groups/scenario-groups.service';
 import {
   GenerateFromTextRequest,
   GenerateFromJiraRequest,
@@ -22,11 +23,16 @@ import {
   GenerateScenarioResponse,
   ConvertBddResponse,
   ScenarioResponse,
+  ScenarioWithGroup,
   ScenarioWithProject,
   ExcelRowData,
   ExcelImportResultItem,
   ExcelImportResponse,
 } from './models/scenario.response';
+import {
+  PaginationQuery,
+  PaginatedResponse,
+} from '../../common/models/pagination';
 import * as ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -42,6 +48,7 @@ export class ScenariosService {
     private aiService: AiService,
     private projectsService: ProjectsService,
     private jiraService: JiraService,
+    private scenarioGroupsService: ScenarioGroupsService,
   ) {}
 
   async generateFromText(
@@ -142,7 +149,10 @@ export class ScenariosService {
     request: SaveScenariosRequest,
     userId: string,
   ): Promise<ScenarioResponse[]> {
-    await this.projectsService.findOne(request.projectId, userId);
+    const group = await this.scenarioGroupsService.findOne(
+      request.groupId,
+      userId,
+    );
 
     const saved: ScenarioResponse[] = [];
 
@@ -163,9 +173,15 @@ export class ScenariosService {
           input: request.input,
           rawOutput,
           bddOutput,
+          category: s.category,
+          priority: s.priority,
+          preconditions: s.preconditions,
+          steps: s.steps,
+          expectedResult: s.expectedResult,
           sourceType: request.sourceType ?? null,
           sourceRef: request.sourceRef ?? null,
-          projectId: request.projectId,
+          projectId: group.projectId,
+          groupId: request.groupId,
         },
       });
 
@@ -191,21 +207,13 @@ export class ScenariosService {
     return parts.join('\n\n');
   }
 
-  async findByProject(
-    projectId: string,
-    userId: string,
-  ): Promise<ScenarioResponse[]> {
-    await this.projectsService.findOne(projectId, userId);
-    return this.prisma.testScenario.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
   async findOne(id: string, userId: string): Promise<ScenarioWithProject> {
     const scenario = await this.prisma.testScenario.findUnique({
       where: { id },
-      include: { project: true },
+      include: {
+        project: true,
+        group: { select: { id: true, name: true, type: true } },
+      },
     });
     if (!scenario) throw new NotFoundException('Senaryo bulunamadı');
     if (scenario.project.userId !== userId)
@@ -219,12 +227,104 @@ export class ScenariosService {
     return { message: 'Senaryo silindi' };
   }
 
+  async findByGroup(
+    groupId: string,
+    userId: string,
+    pagination: PaginationQuery,
+  ): Promise<PaginatedResponse<ScenarioWithGroup>> {
+    await this.scenarioGroupsService.findOne(groupId, userId);
+
+    const page = pagination.page ?? 1;
+    const limit = pagination.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.testScenario.findMany({
+        where: { groupId },
+        include: { group: { select: { id: true, name: true, type: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.testScenario.count({ where: { groupId } }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async exportAll(
+    projectId: string,
+    query: ExportQueryRequest,
+    userId: string,
+  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    const project = await this.projectsService.findOne(projectId, userId);
+    const scenarios = await this.getFilteredScenarios(projectId, query);
+
+    if (scenarios.length === 0) {
+      throw new BadRequestException('Export edilecek senaryo bulunamadı');
+    }
+
+    const projectName = project.name.replace(/[^a-zA-Z0-9-_]/g, '_');
+
+    switch (query.format) {
+      case ExportFormat.EXCEL:
+        return this.exportAsExcel(scenarios, projectName, query.xrayFormat);
+      case ExportFormat.PDF:
+        return this.exportAsPdf(scenarios, project.name);
+      case ExportFormat.JSON:
+        return this.exportAsJson(scenarios, projectName);
+      case ExportFormat.FEATURE:
+        return this.exportAsFeature(scenarios, project.name, projectName);
+    }
+  }
+
+  async exportByGroup(
+    groupId: string,
+    query: ExportQueryRequest,
+    userId: string,
+  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    const group = await this.scenarioGroupsService.findOne(groupId, userId);
+    const scenarios = await this.getFilteredScenarios(
+      group.projectId,
+      query,
+      groupId,
+    );
+
+    if (scenarios.length === 0) {
+      throw new BadRequestException('Export edilecek senaryo bulunamadı');
+    }
+
+    const groupName = group.name.replace(/[^a-zA-Z0-9-_]/g, '_');
+
+    switch (query.format) {
+      case ExportFormat.EXCEL:
+        return this.exportAsExcel(scenarios, groupName, query.xrayFormat);
+      case ExportFormat.PDF:
+        return this.exportAsPdf(scenarios, group.name);
+      case ExportFormat.JSON:
+        return this.exportAsJson(scenarios, groupName);
+      case ExportFormat.FEATURE:
+        return this.exportAsFeature(scenarios, group.name, groupName);
+    }
+  }
+
   async importExcel(
     file: Express.Multer.File,
     request: ImportExcelRequest,
     userId: string,
   ): Promise<ExcelImportResponse> {
-    await this.projectsService.findOne(request.projectId, userId);
+    const group = await this.scenarioGroupsService.findOne(
+      request.groupId,
+      userId,
+    );
 
     const rows = await this.parseExcel(file.buffer);
     if (rows.length === 0) {
@@ -278,7 +378,13 @@ export class ScenariosService {
               input,
               rawOutput: input,
               bddOutput,
-              projectId: request.projectId,
+              category: '',
+              priority: '',
+              preconditions: '',
+              steps: [],
+              expectedResult: '',
+              projectId: group.projectId,
+              groupId: request.groupId,
             },
           });
           resultItem.savedId = saved.id;
@@ -298,32 +404,6 @@ export class ScenariosService {
     }
 
     return { totalRows: rows.length, successCount, failureCount, results };
-  }
-
-  async exportByProject(
-    projectId: string,
-    query: ExportQueryRequest,
-    userId: string,
-  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
-    const project = await this.projectsService.findOne(projectId, userId);
-    const scenarios = await this.getFilteredScenarios(projectId, query);
-
-    if (scenarios.length === 0) {
-      throw new BadRequestException('Export edilecek senaryo bulunamadı');
-    }
-
-    const projectName = project.name.replace(/[^a-zA-Z0-9-_]/g, '_');
-
-    switch (query.format) {
-      case ExportFormat.EXCEL:
-        return this.exportAsExcel(scenarios, projectName, query.xrayFormat);
-      case ExportFormat.PDF:
-        return this.exportAsPdf(scenarios, project.name);
-      case ExportFormat.JSON:
-        return this.exportAsJson(scenarios, projectName);
-      case ExportFormat.FEATURE:
-        return this.exportAsFeature(scenarios, project.name, projectName);
-    }
   }
 
   async exportSingle(
@@ -350,8 +430,10 @@ export class ScenariosService {
   private async getFilteredScenarios(
     projectId: string,
     query: ExportQueryRequest,
+    groupId?: string,
   ): Promise<ScenarioResponse[]> {
     const where: Record<string, unknown> = { projectId };
+    if (groupId) where.groupId = groupId;
 
     if (query.startDate || query.endDate) {
       const createdAt: Record<string, string> = {};

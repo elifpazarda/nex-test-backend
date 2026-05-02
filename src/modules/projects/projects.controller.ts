@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
@@ -13,7 +14,11 @@ import {
   CreateProjectRequest,
   UpdateProjectRequest,
 } from './models/project.request';
-import { ProjectResponse, ProjectWithCount } from './models/project.response';
+import { ProjectWithCount } from './models/project.response';
+import {
+  PaginationQuery,
+  PaginatedResponse,
+} from '../../common/models/pagination';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
@@ -24,15 +29,18 @@ export class ProjectsController {
   constructor(private projectsService: ProjectsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: CurrentUserData): Promise<ProjectWithCount[]> {
-    return this.projectsService.findAll(user.id);
+  findAll(
+    @CurrentUser() user: CurrentUserData,
+    @Query() pagination: PaginationQuery,
+  ): Promise<PaginatedResponse<ProjectWithCount>> {
+    return this.projectsService.findAll(user.id, pagination);
   }
 
   @Get(':id')
   findOne(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<ProjectResponse> {
+  ): Promise<ProjectWithCount> {
     return this.projectsService.findOne(id, user.id);
   }
 
@@ -40,7 +48,7 @@ export class ProjectsController {
   create(
     @Body() request: CreateProjectRequest,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<ProjectResponse> {
+  ): Promise<ProjectWithCount> {
     return this.projectsService.create(user.id, request);
   }
 
@@ -49,7 +57,7 @@ export class ProjectsController {
     @Param('id') id: string,
     @Body() request: UpdateProjectRequest,
     @CurrentUser() user: CurrentUserData,
-  ): Promise<ProjectResponse> {
+  ): Promise<ProjectWithCount> {
     return this.projectsService.update(id, user.id, request);
   }
 

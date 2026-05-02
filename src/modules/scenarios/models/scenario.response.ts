@@ -33,11 +33,25 @@ export interface ScenarioResponse {
   input: string;
   rawOutput: string;
   bddOutput: string;
+  category: string;
+  priority: string;
+  preconditions: string;
+  steps: string[];
+  expectedResult: string;
   sourceType: string | null;
   sourceRef: string | null;
   projectId: string;
+  groupId: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ScenarioWithGroup extends ScenarioResponse {
+  group: {
+    id: string;
+    name: string;
+    type: string;
+  };
 }
 
 export interface ScenarioWithProject extends ScenarioResponse {
@@ -48,6 +62,11 @@ export interface ScenarioWithProject extends ScenarioResponse {
     userId: string;
     createdAt: Date;
     updatedAt: Date;
+  };
+  group: {
+    id: string;
+    name: string;
+    type: string;
   };
 }
 

@@ -1,6 +1,11 @@
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { RegisterRequest, LoginRequest } from './models/auth.request';
+import {
+  RegisterRequest,
+  LoginRequest,
+  RefreshTokenRequest,
+} from './models/auth.request';
 import { UserResponse, AuthTokens } from './models/auth.response';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -10,14 +15,21 @@ import type { CurrentUserData } from '../../common/decorators/current-user.decor
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('register')
   register(@Body() request: RegisterRequest): Promise<UserResponse> {
     return this.authService.register(request);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('login')
   login(@Body() request: LoginRequest): Promise<AuthTokens> {
     return this.authService.login(request);
+  }
+
+  @Post('refresh')
+  refresh(@Body() request: RefreshTokenRequest): Promise<AuthTokens> {
+    return this.authService.refresh(request);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -28,7 +40,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  logout(): { message: string } {
-    return { message: 'Çıkış yapıldı' };
+  logout(@CurrentUser() user: CurrentUserData): Promise<{ message: string }> {
+    return this.authService.logout(user.id);
   }
 }

@@ -1,12 +1,12 @@
 # Projects Module
 
-Kullanici projelerinin CRUD yonetimi. Her proje bir kullaniciya ait ve birden fazla test senaryosu icerebilir.
+Kullanici projelerinin CRUD yonetimi. Her proje bir kullaniciya ait ve birden fazla senaryo grubu ve test senaryosu icerebilir.
 
 ## Dosyalar
 
 | Dosya | Sorumluluk |
 |-------|------------|
-| `projects.controller.ts` | Route handler'lari (tumu JWT korumalı) |
+| `projects.controller.ts` | Route handler'lari (tumu JWT korumali) |
 | `projects.service.ts` | CRUD is mantigi, sahiplik kontrolu |
 | `projects.module.ts` | Module tanimi, ProjectsService export eder |
 | `models/project.request.ts` | `CreateProjectRequest`, `UpdateProjectRequest` |
@@ -16,13 +16,13 @@ Kullanici projelerinin CRUD yonetimi. Her proje bir kullaniciya ait ve birden fa
 
 | Method | Endpoint | Request | Response |
 |--------|----------|---------|----------|
-| GET | /projects | - | `ProjectWithCount[]` |
-| GET | /projects/:id | - | `ProjectResponse` |
-| POST | /projects | `CreateProjectRequest` | `ProjectResponse` |
-| PATCH | /projects/:id | `UpdateProjectRequest` | `ProjectResponse` |
+| GET | /projects | `PaginationQuery` | `PaginatedResponse<ProjectWithCount>` |
+| GET | /projects/:id | - | `ProjectWithCount` |
+| POST | /projects | `CreateProjectRequest` | `ProjectWithCount` |
+| PATCH | /projects/:id | `UpdateProjectRequest` | `ProjectWithCount` |
 | DELETE | /projects/:id | - | `{ message }` |
 
-Tum endpointler JWT korumalıdir.
+Tum endpointler JWT korumalidir.
 
 ## Sahiplik Kontrolu
 
@@ -32,10 +32,11 @@ Tum endpointler JWT korumalıdir.
 
 ## Response Detay
 
-- `findAll()` → `ProjectWithCount[]`: Her proje ile birlikte `_count.scenarios` (senaryo sayisi) doner
-- Diger metodlar → `ProjectResponse`: Proje alanlari (password benzeri hassas alan yok)
+- Tum CRUD endpointleri `ProjectWithCount` doner: proje alanlari + `_count.scenarios` ve `_count.scenarioGroups`
+- `findAll()` paginated: `PaginatedResponse<ProjectWithCount>` (items + meta)
+- Pagination query: `page` (varsayilan 1), `limit` (varsayilan 20)
 
 ## Bagimliliklar
 
-- `ProjectsService` diger moduller tarafindan kullanilir (scenarios modulu import eder)
+- `ProjectsService` diger moduller tarafindan kullanilir (scenarios, scenario-groups modulleri import eder)
 - `PrismaService` uzerinden DB erisimi

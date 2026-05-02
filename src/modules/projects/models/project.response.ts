@@ -8,5 +8,5 @@ export interface ProjectResponse {
 }
 
 export interface ProjectWithCount extends ProjectResponse {
-  _count: { scenarios: number };
+  _count: { scenarios: number; scenarioGroups: number };
 }
