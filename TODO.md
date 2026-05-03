@@ -8,11 +8,12 @@ Test ve kod incelemesi sirasinda tespit edilen iyilestirme, duzeltme ve tasarim 
 
 ### 1. [YUKSEK] Hata Mesaji Format Tutarsizligi
 
-- [ ] Validation hatalari: `message: ["name must be...", "password must be..."]` (string array, Ingilizce)
-- [ ] Business hatalari: `message: "Bu email zaten kullanılıyor"` (tek string, Turkce)
+- [x] Validation hatalari: `message: ["name must be...", "password must be..."]` (string array, Ingilizce)
+- [x] Business hatalari: `message: "Bu email zaten kullanılıyor"` (tek string, Turkce)
   - Frontend her hata tipi icin farkli parse mantigi yazmak zorunda
   - **Oneri:** Her zaman `message: string[]` formatinda don, Turkce mesajlar kullan
   - **Etki:** HttpExceptionFilter + class-validator i18n konfigurasyonu
+  - **Cozum:** `formatValidationErrors` utility (TR ceviri map) + ValidationPipe `exceptionFactory` + filter normalizasyonu
 
 ---
 
