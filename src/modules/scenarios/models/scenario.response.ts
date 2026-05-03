@@ -70,6 +70,14 @@ export interface ScenarioWithProject extends ScenarioResponse {
   };
 }
 
+export interface ExportMetadata {
+  source: 'all' | 'group' | 'single';
+  project: { id: string; name: string; description: string | null };
+  group?: { id: string; name: string; type: string };
+  exportedAt: Date;
+  scenarioCount: number;
+}
+
 export interface ExcelRowData {
   rowNumber: number;
   issueKey: string;

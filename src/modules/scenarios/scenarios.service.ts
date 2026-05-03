@@ -28,6 +28,7 @@ import {
   ExcelRowData,
   ExcelImportResultItem,
   ExcelImportResponse,
+  ExportMetadata,
 } from './models/scenario.response';
 import {
   PaginationQuery,
@@ -272,18 +273,19 @@ export class ScenariosService {
       throw new BadRequestException('Export edilecek senaryo bulunamadı');
     }
 
-    const projectName = project.name.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const metadata: ExportMetadata = {
+      source: 'all',
+      project: {
+        id: project.id,
+        name: project.name,
+        description: project.description ?? null,
+      },
+      exportedAt: new Date(),
+      scenarioCount: scenarios.length,
+    };
+    const filenameBase = this.toSafeFilename(project.name);
 
-    switch (query.format) {
-      case ExportFormat.EXCEL:
-        return this.exportAsExcel(scenarios, projectName, query.xrayFormat);
-      case ExportFormat.PDF:
-        return this.exportAsPdf(scenarios, project.name);
-      case ExportFormat.JSON:
-        return this.exportAsJson(scenarios, projectName);
-      case ExportFormat.FEATURE:
-        return this.exportAsFeature(scenarios, project.name, projectName);
-    }
+    return this.runExport(query, scenarios, metadata, filenameBase);
   }
 
   async exportByGroup(
@@ -292,6 +294,7 @@ export class ScenariosService {
     userId: string,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     const group = await this.scenarioGroupsService.findOne(groupId, userId);
+    const project = await this.projectsService.findOne(group.projectId, userId);
     const scenarios = await this.getFilteredScenarios(
       group.projectId,
       query,
@@ -302,17 +305,46 @@ export class ScenariosService {
       throw new BadRequestException('Export edilecek senaryo bulunamadı');
     }
 
-    const groupName = group.name.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const metadata: ExportMetadata = {
+      source: 'group',
+      project: {
+        id: project.id,
+        name: project.name,
+        description: project.description ?? null,
+      },
+      group: { id: group.id, name: group.name, type: group.type },
+      exportedAt: new Date(),
+      scenarioCount: scenarios.length,
+    };
+    const filenameBase = this.toSafeFilename(group.name);
 
+    return this.runExport(query, scenarios, metadata, filenameBase);
+  }
+
+  private toSafeFilename(name: string): string {
+    return name.replace(/[^a-zA-Z0-9-_]/g, '_');
+  }
+
+  private runExport(
+    query: ExportQueryRequest,
+    scenarios: ScenarioWithGroup[],
+    metadata: ExportMetadata,
+    filenameBase: string,
+  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     switch (query.format) {
       case ExportFormat.EXCEL:
-        return this.exportAsExcel(scenarios, groupName, query.xrayFormat);
+        return this.exportAsExcel(
+          scenarios,
+          metadata,
+          filenameBase,
+          query.xrayFormat,
+        );
       case ExportFormat.PDF:
-        return this.exportAsPdf(scenarios, group.name);
+        return this.exportAsPdf(scenarios, metadata, filenameBase);
       case ExportFormat.JSON:
-        return this.exportAsJson(scenarios, groupName);
+        return this.exportAsJson(scenarios, metadata, filenameBase);
       case ExportFormat.FEATURE:
-        return this.exportAsFeature(scenarios, group.name, groupName);
+        return this.exportAsFeature(scenarios, metadata, filenameBase);
     }
   }
 
@@ -413,25 +445,31 @@ export class ScenariosService {
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     const scenario = await this.findOne(id, userId);
 
-    const scenarioName = scenario.title.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const metadata: ExportMetadata = {
+      source: 'single',
+      project: {
+        id: scenario.project.id,
+        name: scenario.project.name,
+        description: scenario.project.description ?? null,
+      },
+      group: {
+        id: scenario.group.id,
+        name: scenario.group.name,
+        type: scenario.group.type,
+      },
+      exportedAt: new Date(),
+      scenarioCount: 1,
+    };
+    const filenameBase = this.toSafeFilename(scenario.title);
 
-    switch (query.format) {
-      case ExportFormat.EXCEL:
-        return this.exportAsExcel([scenario], scenarioName, query.xrayFormat);
-      case ExportFormat.PDF:
-        return this.exportAsPdf([scenario], scenario.title);
-      case ExportFormat.JSON:
-        return this.exportAsJson([scenario], scenarioName);
-      case ExportFormat.FEATURE:
-        return this.exportAsFeature([scenario], scenario.title, scenarioName);
-    }
+    return this.runExport(query, [scenario], metadata, filenameBase);
   }
 
   private async getFilteredScenarios(
     projectId: string,
     query: ExportQueryRequest,
     groupId?: string,
-  ): Promise<ScenarioResponse[]> {
+  ): Promise<ScenarioWithGroup[]> {
     const where: Record<string, unknown> = { projectId };
     if (groupId) where.groupId = groupId;
 
@@ -444,70 +482,26 @@ export class ScenariosService {
 
     return this.prisma.testScenario.findMany({
       where,
+      include: { group: { select: { id: true, name: true, type: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   private async exportAsExcel(
-    scenarios: ScenarioResponse[],
+    scenarios: ScenarioWithGroup[],
+    metadata: ExportMetadata,
     name: string,
     xrayFormat?: boolean,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Scenarios');
+    workbook.creator = 'QA Platform';
+    workbook.created = metadata.exportedAt;
 
     if (xrayFormat) {
-      worksheet.columns = [
-        { header: 'Issue Id', key: 'issueId', width: 15 },
-        { header: 'Issue Key', key: 'issueKey', width: 15 },
-        { header: 'Issue Type', key: 'issueType', width: 15 },
-        { header: 'Test Type', key: 'testType', width: 15 },
-        { header: 'Test Summary', key: 'testSummary', width: 40 },
-        { header: 'Description', key: 'description', width: 40 },
-        { header: 'Action', key: 'action', width: 40 },
-        { header: 'Data', key: 'data', width: 20 },
-        { header: 'Result', key: 'result', width: 40 },
-        { header: 'Project key', key: 'projectKey', width: 15 },
-        { header: 'Test Repo', key: 'testRepo', width: 15 },
-        { header: 'Test Priority', key: 'testPriority', width: 15 },
-      ];
-
-      for (const s of scenarios) {
-        worksheet.addRow({
-          issueId: '',
-          issueKey: '',
-          issueType: 'Test',
-          testType: 'Manual',
-          testSummary: s.title,
-          description: s.input,
-          action: s.bddOutput,
-          data: '',
-          result: '',
-          projectKey: '',
-          testRepo: '',
-          testPriority: 'Normal',
-        });
-      }
+      this.buildXrayWorksheet(workbook, scenarios);
     } else {
-      worksheet.columns = [
-        { header: 'Title', key: 'title', width: 30 },
-        { header: 'Input', key: 'input', width: 40 },
-        { header: 'BDD Output', key: 'bddOutput', width: 50 },
-        { header: 'Created At', key: 'createdAt', width: 25 },
-      ];
-
-      for (const s of scenarios) {
-        worksheet.addRow({
-          title: s.title,
-          input: s.input,
-          bddOutput: s.bddOutput,
-          createdAt: s.createdAt,
-        });
-      }
+      this.buildScenarioWorksheet(workbook, scenarios, metadata);
     }
-
-    // Style header row
-    worksheet.getRow(1).font = { bold: true };
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -520,9 +514,135 @@ export class ScenariosService {
     };
   }
 
+  private buildXrayWorksheet(
+    workbook: ExcelJS.Workbook,
+    scenarios: ScenarioWithGroup[],
+  ): void {
+    const worksheet = workbook.addWorksheet('Scenarios');
+    worksheet.columns = [
+      { header: 'Issue Id', key: 'issueId', width: 15 },
+      { header: 'Issue Key', key: 'issueKey', width: 15 },
+      { header: 'Issue Type', key: 'issueType', width: 15 },
+      { header: 'Test Type', key: 'testType', width: 15 },
+      { header: 'Test Summary', key: 'testSummary', width: 40 },
+      { header: 'Description', key: 'description', width: 40 },
+      { header: 'Action', key: 'action', width: 40 },
+      { header: 'Data', key: 'data', width: 20 },
+      { header: 'Result', key: 'result', width: 40 },
+      { header: 'Project key', key: 'projectKey', width: 15 },
+      { header: 'Test Repo', key: 'testRepo', width: 15 },
+      { header: 'Test Priority', key: 'testPriority', width: 15 },
+    ];
+    for (const s of scenarios) {
+      worksheet.addRow({
+        issueId: '',
+        issueKey: '',
+        issueType: 'Test',
+        testType: 'Manual',
+        testSummary: s.title,
+        description: s.input,
+        action: s.bddOutput,
+        data: '',
+        result: '',
+        projectKey: '',
+        testRepo: '',
+        testPriority: 'Normal',
+      });
+    }
+    this.styleHeader(worksheet);
+  }
+
+  private buildScenarioWorksheet(
+    workbook: ExcelJS.Workbook,
+    scenarios: ScenarioWithGroup[],
+    metadata: ExportMetadata,
+  ): void {
+    const metaSheet = workbook.addWorksheet('Metadata');
+    metaSheet.columns = [
+      { key: 'field', width: 22 },
+      { key: 'value', width: 60 },
+    ];
+    const metaRows: Array<[string, string]> = [
+      ['Project', metadata.project.name],
+      ['Project Description', metadata.project.description ?? '-'],
+      ['Source', metadata.source],
+    ];
+    if (metadata.group) {
+      metaRows.push(
+        ['Group', metadata.group.name],
+        ['Group Type', metadata.group.type],
+      );
+    }
+    metaRows.push(
+      ['Scenario Count', String(metadata.scenarioCount)],
+      ['Exported At', metadata.exportedAt.toISOString()],
+    );
+    for (const [field, value] of metaRows) {
+      const row = metaSheet.addRow({ field, value });
+      row.getCell('field').font = { bold: true };
+      row.getCell('value').alignment = { wrapText: true, vertical: 'top' };
+    }
+
+    const sheet = workbook.addWorksheet('Scenarios');
+    sheet.columns = [
+      { header: 'Title', key: 'title', width: 32 },
+      { header: 'Group', key: 'group', width: 22 },
+      { header: 'Group Type', key: 'groupType', width: 14 },
+      { header: 'Category', key: 'category', width: 14 },
+      { header: 'Priority', key: 'priority', width: 12 },
+      { header: 'Preconditions', key: 'preconditions', width: 35 },
+      { header: 'Steps', key: 'steps', width: 50 },
+      { header: 'Expected Result', key: 'expectedResult', width: 35 },
+      { header: 'Input', key: 'input', width: 40 },
+      { header: 'BDD Output', key: 'bddOutput', width: 50 },
+      { header: 'Source Type', key: 'sourceType', width: 14 },
+      { header: 'Source Ref', key: 'sourceRef', width: 18 },
+      { header: 'Created At', key: 'createdAt', width: 22 },
+    ];
+
+    for (const s of scenarios) {
+      const row = sheet.addRow({
+        title: s.title,
+        group: s.group.name,
+        groupType: s.group.type,
+        category: s.category,
+        priority: s.priority,
+        preconditions: s.preconditions,
+        steps: s.steps.map((step, idx) => `${idx + 1}. ${step}`).join('\n'),
+        expectedResult: s.expectedResult,
+        input: s.input,
+        bddOutput: s.bddOutput,
+        sourceType: s.sourceType ?? '',
+        sourceRef: s.sourceRef ?? '',
+        createdAt: s.createdAt,
+      });
+      row.alignment = { wrapText: true, vertical: 'top' };
+    }
+
+    this.styleHeader(sheet);
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: sheet.columns.length },
+    };
+  }
+
+  private styleHeader(worksheet: ExcelJS.Worksheet): void {
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1F4E79' },
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+    headerRow.height = 22;
+  }
+
   private exportAsPdf(
-    scenarios: ScenarioResponse[],
-    title: string,
+    scenarios: ScenarioWithGroup[],
+    metadata: ExportMetadata,
+    name: string,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     return new Promise((resolve) => {
       const fontPath = path.join(
@@ -540,10 +660,9 @@ export class ScenariosService {
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => {
         const buffer = Buffer.concat(chunks);
-        const filename = title.replace(/[^a-zA-Z0-9-_]/g, '_');
         resolve({
           buffer,
-          filename: `${filename}.pdf`,
+          filename: `${name}.pdf`,
           contentType: 'application/pdf',
         });
       });
@@ -551,26 +670,65 @@ export class ScenariosService {
       doc.registerFont('NotoSans', fontPath);
       doc.font('NotoSans');
 
-      doc.fontSize(20).text(title, { align: 'center' });
-      doc.moveDown(2);
+      const headerTitle = metadata.group
+        ? `${metadata.project.name} — ${metadata.group.name}`
+        : metadata.project.name;
+
+      doc.fontSize(20).text(headerTitle, { align: 'center' });
+      doc.moveDown(0.5);
+      doc.fontSize(10).text(`Project: ${metadata.project.name}`);
+      if (metadata.group) {
+        doc.text(`Group: ${metadata.group.name} (${metadata.group.type})`);
+      }
+      doc.text(`Scenarios: ${metadata.scenarioCount}`);
+      doc.text(`Exported At: ${metadata.exportedAt.toISOString()}`);
+      doc.moveDown(1.5);
 
       for (let i = 0; i < scenarios.length; i++) {
         const s = scenarios[i];
 
-        if (i > 0) {
-          doc.addPage();
+        if (i > 0) doc.addPage();
+
+        doc.fontSize(14).text(s.title);
+        doc.moveDown(0.3);
+
+        doc
+          .fontSize(9)
+          .text(
+            `Group: ${s.group.name} (${s.group.type})  •  Category: ${s.category || '-'}  •  Priority: ${s.priority || '-'}`,
+          );
+        doc.moveDown(0.6);
+
+        if (s.preconditions) {
+          doc.fontSize(11).text('Preconditions');
+          doc.fontSize(10).text(s.preconditions);
+          doc.moveDown(0.5);
         }
 
-        doc.fontSize(14).text(s.title, { underline: true });
-        doc.moveDown(0.5);
+        if (s.steps?.length) {
+          doc.fontSize(11).text('Steps');
+          doc.fontSize(10);
+          s.steps.forEach((step, idx) => doc.text(`${idx + 1}. ${step}`));
+          doc.moveDown(0.5);
+        }
 
-        doc.fontSize(11).text('Input:', { underline: true });
-        doc.fontSize(10).text(s.input);
-        doc.moveDown(0.5);
+        if (s.expectedResult) {
+          doc.fontSize(11).text('Expected Result');
+          doc.fontSize(10).text(s.expectedResult);
+          doc.moveDown(0.5);
+        }
 
-        doc.fontSize(11).text('BDD Output:', { underline: true });
-        doc.fontSize(10).text(s.bddOutput);
-        doc.moveDown(1);
+        if (s.input) {
+          doc.fontSize(11).text('Input');
+          doc.fontSize(10).text(s.input);
+          doc.moveDown(0.5);
+        }
+
+        if (s.bddOutput) {
+          doc.fontSize(11).text('BDD Output');
+          doc.fontSize(10).text(s.bddOutput);
+          doc.moveDown(0.5);
+        }
       }
 
       doc.end();
@@ -578,17 +736,37 @@ export class ScenariosService {
   }
 
   private async exportAsJson(
-    scenarios: ScenarioResponse[],
+    scenarios: ScenarioWithGroup[],
+    metadata: ExportMetadata,
     name: string,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
-    const data = scenarios.map((s) => ({
-      title: s.title,
-      input: s.input,
-      bddOutput: s.bddOutput,
-      createdAt: s.createdAt,
-    }));
+    const payload = {
+      metadata: {
+        source: metadata.source,
+        project: metadata.project,
+        group: metadata.group,
+        scenarioCount: metadata.scenarioCount,
+        exportedAt: metadata.exportedAt.toISOString(),
+      },
+      scenarios: scenarios.map((s) => ({
+        id: s.id,
+        title: s.title,
+        group: s.group,
+        category: s.category,
+        priority: s.priority,
+        preconditions: s.preconditions,
+        steps: s.steps,
+        expectedResult: s.expectedResult,
+        input: s.input,
+        bddOutput: s.bddOutput,
+        sourceType: s.sourceType,
+        sourceRef: s.sourceRef,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      })),
+    };
 
-    const buffer = Buffer.from(JSON.stringify(data, null, 2), 'utf-8');
+    const buffer = Buffer.from(JSON.stringify(payload, null, 2), 'utf-8');
 
     return {
       buffer,
@@ -598,14 +776,31 @@ export class ScenariosService {
   }
 
   private async exportAsFeature(
-    scenarios: ScenarioResponse[],
-    featureTitle: string,
+    scenarios: ScenarioWithGroup[],
+    metadata: ExportMetadata,
     name: string,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
-    const lines: string[] = [`Feature: ${featureTitle}`, ''];
+    const lines: string[] = [];
+
+    lines.push(`# Project: ${metadata.project.name}`);
+    if (metadata.group) {
+      lines.push(`# Group: ${metadata.group.name} (${metadata.group.type})`);
+    }
+    lines.push(`# Scenarios: ${metadata.scenarioCount}`);
+    lines.push(`# Exported At: ${metadata.exportedAt.toISOString()}`);
+    lines.push('');
+
+    const featureTitle = metadata.group
+      ? `${metadata.project.name} — ${metadata.group.name}`
+      : metadata.project.name;
+    lines.push(`Feature: ${featureTitle}`);
+    lines.push('');
 
     for (const s of scenarios) {
       lines.push(`  # ${s.title}`);
+      lines.push(
+        `  # Group: ${s.group.name} (${s.group.type}) | Category: ${s.category || '-'} | Priority: ${s.priority || '-'}`,
+      );
       const bddLines = s.bddOutput
         .split('\n')
         .map((line) => `  ${line}`)

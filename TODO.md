@@ -73,12 +73,15 @@ Tum endpoint'lerin uc senaryo testleri asagida listelenmistir. Happy path testle
 
 ### Excel Export Iyilestirmesi
 
-- [ ] Excel export formati gozden gecirilecek (gorsel/icerik iyilestirme gerekiyor)
+- [x] Excel export formati gozden gecirilecek (gorsel/icerik iyilestirme gerekiyor)
+  - **Cozum:** Standart formata Group/GroupType/Category/Priority/Preconditions/Steps/ExpectedResult/SourceType/SourceRef sutunlari eklendi; header styling (lacivert+beyaz, bold), freeze first row, autoFilter, wrap text, ayri Metadata sheet'i
 
 ### Export Icerik Iyilestirmesi
 
-- [ ] Proje bazli export'ta (export/all) her senaryonun hangi gruba ait oldugu belirtilmeli (tum formatlar: json, excel, pdf, feature)
-- [ ] Grup bazli export'ta (export/group) grup bilgisi header/metadata olarak eklenmeli
+- [x] Proje bazli export'ta (export/all) her senaryonun hangi gruba ait oldugu belirtilmeli (tum formatlar: json, excel, pdf, feature)
+  - **Cozum:** `getFilteredScenarios` artik group include ediyor; Excel'de Group sutunu, PDF'te her senaryoda group satiri, JSON'da group objesi, .feature'da `# Group:` comment'i
+- [x] Grup bazli export'ta (export/group) grup bilgisi header/metadata olarak eklenmeli
+  - **Cozum:** `ExportMetadata` interface'i + Excel Metadata sheet, PDF kapak bolumu, JSON top-level metadata, .feature dosyasi bas yorumlari
 
 ---
 
