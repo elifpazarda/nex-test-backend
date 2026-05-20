@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readFileSync, existsSync } from 'fs';
@@ -25,23 +29,53 @@ export class AiService {
     jsonSchema: string,
     model = 'sonnet',
   ): Promise<string> {
-    const { stdout } = await execFileAsync(
-      'claude',
-      [
-        '-p',
-        userPrompt,
-        '--system-prompt',
-        systemPrompt,
-        '--model',
-        model,
-        '--output-format',
-        'json',
-        '--json-schema',
-        jsonSchema,
-      ],
-      { maxBuffer: MAX_BUFFER },
-    );
-    return stdout.trim();
+    let stdout = '';
+    try {
+      const result = await execFileAsync(
+        'claude',
+        [
+          '-p',
+          userPrompt,
+          '--system-prompt',
+          systemPrompt,
+          '--model',
+          model,
+          '--output-format',
+          'json',
+          '--json-schema',
+          jsonSchema,
+        ],
+        { maxBuffer: MAX_BUFFER },
+      );
+      stdout = result.stdout;
+    } catch (error) {
+      // claude CLI non-zero exit ile cikabilir; stdout yine de JSON zarfi icerebilir
+      stdout = (error as { stdout?: string }).stdout ?? '';
+    }
+
+    const trimmed = stdout.trim();
+    if (!trimmed) {
+      throw new ServiceUnavailableException(
+        'AI servisi yanıt vermedi, lütfen tekrar deneyin',
+      );
+    }
+
+    let envelope: { is_error?: boolean; result?: string };
+    try {
+      envelope = JSON.parse(trimmed) as { is_error?: boolean; result?: string };
+    } catch {
+      throw new ServiceUnavailableException(
+        'AI servisinden geçersiz yanıt alındı, lütfen tekrar deneyin',
+      );
+    }
+
+    if (envelope.is_error) {
+      throw new ServiceUnavailableException(
+        'AI servisi şu an yanıt veremedi, lütfen tekrar deneyin',
+      );
+    }
+
+    return trimmed;
   }
 
   async generateTestScenario(input: string): Promise<GeneratedScenarioItem[]> {
