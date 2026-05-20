@@ -7,6 +7,8 @@ import {
   Param,
   Query,
   Res,
+  HttpCode,
+  HttpStatus,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -50,6 +52,7 @@ export class ScenariosController {
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/text')
+  @HttpCode(HttpStatus.OK)
   generateFromText(
     @Body() request: GenerateFromTextRequest,
     @CurrentUser() user: CurrentUserData,
@@ -59,6 +62,7 @@ export class ScenariosController {
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/jira')
+  @HttpCode(HttpStatus.OK)
   generateFromJira(
     @Body() request: GenerateFromJiraRequest,
     @CurrentUser() user: CurrentUserData,
@@ -68,6 +72,7 @@ export class ScenariosController {
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/excel')
+  @HttpCode(HttpStatus.OK)
   @UseInterceptors(FileInterceptor('file'))
   generateFromExcel(
     @UploadedFile(
@@ -90,6 +95,7 @@ export class ScenariosController {
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('generate/pdf')
+  @HttpCode(HttpStatus.OK)
   @UseInterceptors(FileInterceptor('file'))
   generateFromPdf(
     @UploadedFile(
@@ -109,6 +115,7 @@ export class ScenariosController {
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('convert-bdd')
+  @HttpCode(HttpStatus.OK)
   convertToBdd(
     @Body() request: ConvertBddRequest,
     @CurrentUser() user: CurrentUserData,
@@ -117,6 +124,7 @@ export class ScenariosController {
   }
 
   @Post('import-excel')
+  @HttpCode(HttpStatus.OK)
   @UseInterceptors(FileInterceptor('file'))
   importExcel(
     @UploadedFile(

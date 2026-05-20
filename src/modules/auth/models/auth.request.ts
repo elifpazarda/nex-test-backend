@@ -26,6 +26,7 @@ export class LoginRequest {
   email: string;
 
   @IsString()
+  @IsNotEmpty()
   @MaxLength(128)
   password: string;
 }
