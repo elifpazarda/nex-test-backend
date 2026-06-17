@@ -111,8 +111,13 @@ export class ScenariosService {
   ): Promise<GenerateScenarioResponse> {
     await this.projectsService.findOne(request.projectId, userId);
 
-    const parsed = await pdfParse(file.buffer);
-    const input = parsed.text?.trim();
+    let input: string | undefined;
+    try {
+      const parsed = await pdfParse(file.buffer);
+      input = parsed.text?.trim();
+    } catch {
+      throw new BadRequestException('PDF dosyasından içerik okunamadı');
+    }
     if (!input) {
       throw new BadRequestException('PDF dosyasından içerik okunamadı');
     }
