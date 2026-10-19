@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readFileSync, existsSync } from 'fs';
@@ -18,6 +19,12 @@ const MAX_BUFFER = 5 * 1024 * 1024;
 @Injectable()
 export class AiService {
   private readonly promptsDir = join(__dirname, 'prompts');
+  // Varsayilan model sonnet; demoda AI_MODEL=haiku ile hizlandirilabilir.
+  private readonly defaultModel: string;
+
+  constructor(config: ConfigService) {
+    this.defaultModel = config.get<string>('AI_MODEL') ?? 'sonnet';
+  }
 
   private readPrompt(filename: string): string {
     return readFileSync(join(this.promptsDir, filename), 'utf-8').trim();
@@ -27,7 +34,7 @@ export class AiService {
     systemPrompt: string,
     userPrompt: string,
     jsonSchema: string,
-    model = 'sonnet',
+    model = this.defaultModel,
   ): Promise<string> {
     let stdout = '';
     try {
@@ -44,6 +51,12 @@ export class AiService {
           'json',
           '--json-schema',
           jsonSchema,
+          // Saf metin uretimi; Bash/Read/Edit gibi araclara ihtiyac yok.
+          // Araclari ve harici MCP'yi devre disi birakmak ~24K token'lik
+          // agent yukunu kaldirir (abonelik kotasindan tasarruf).
+          '--tools',
+          '',
+          '--strict-mcp-config',
         ],
         { maxBuffer: MAX_BUFFER },
       );

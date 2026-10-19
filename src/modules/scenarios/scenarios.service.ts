@@ -4,11 +4,13 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { GenerationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { ProjectsService } from '../projects/projects.service';
 import { JiraService } from '../jira/jira.service';
 import { ScenarioGroupsService } from '../scenario-groups/scenario-groups.service';
+import { GenerationsService } from '../generations/generations.service';
 import {
   GenerateFromTextRequest,
   GenerateFromJiraRequest,
@@ -21,6 +23,7 @@ import {
 } from './models/scenario.request';
 import {
   GenerateScenarioResponse,
+  GeneratedScenarioItem,
   ConvertBddResponse,
   ScenarioResponse,
   ScenarioWithGroup,
@@ -50,6 +53,7 @@ export class ScenariosService {
     private projectsService: ProjectsService,
     private jiraService: JiraService,
     private scenarioGroupsService: ScenarioGroupsService,
+    private generationsService: GenerationsService,
   ) {}
 
   async generateFromText(
@@ -58,9 +62,11 @@ export class ScenariosService {
   ): Promise<GenerateScenarioResponse> {
     await this.projectsService.findOne(request.projectId, userId);
 
-    const scenarios = await this.aiService.generateTestScenario(request.input);
-
-    return { scenarios, input: request.input, sourceType: 'text' };
+    return this.runGeneration(userId, request.projectId, {
+      input: request.input,
+      sourceType: 'text',
+      title: request.title ?? this.deriveTitle(request.input),
+    });
   }
 
   async generateFromJira(
@@ -72,14 +78,12 @@ export class ScenariosService {
     const issue = await this.jiraService.getIssue(userId, request.issueKey);
     const input = this.buildJiraInput(issue);
 
-    const scenarios = await this.aiService.generateTestScenario(input);
-
-    return {
-      scenarios,
+    return this.runGeneration(userId, request.projectId, {
       input,
       sourceType: 'jira',
       sourceRef: issue.key,
-    };
+      title: request.title ?? `${issue.key} · ${issue.summary}`,
+    });
   }
 
   async generateFromExcel(
@@ -94,14 +98,12 @@ export class ScenariosService {
       throw new BadRequestException('Excel dosyasından içerik okunamadı');
     }
 
-    const scenarios = await this.aiService.generateTestScenario(input);
-
-    return {
-      scenarios,
+    return this.runGeneration(userId, request.projectId, {
       input,
       sourceType: 'excel',
       sourceRef: file.originalname,
-    };
+      title: request.title ?? file.originalname,
+    });
   }
 
   async generateFromPdf(
@@ -122,14 +124,75 @@ export class ScenariosService {
       throw new BadRequestException('PDF dosyasından içerik okunamadı');
     }
 
-    const scenarios = await this.aiService.generateTestScenario(input);
-
-    return {
-      scenarios,
+    return this.runGeneration(userId, request.projectId, {
       input,
       sourceType: 'pdf',
       sourceRef: file.originalname,
+      title: request.title ?? file.originalname,
+    });
+  }
+
+  // Ortak uretim akisi: AI cagrisini sureyle olcer, sonucu bir Generation
+  // calistirmasi olarak kaydeder (Gecmis ekranini besler) ve response'a
+  // generationId ekler. AI hatasinda FAILED kaydi yazip hatayi tekrar firlatir.
+  private async runGeneration(
+    userId: string,
+    projectId: string,
+    params: {
+      input: string;
+      sourceType: string;
+      sourceRef?: string;
+      title: string;
+    },
+  ): Promise<GenerateScenarioResponse> {
+    const start = Date.now();
+    let scenarios: GeneratedScenarioItem[];
+
+    try {
+      scenarios = await this.aiService.generateTestScenario(params.input);
+    } catch (error) {
+      await this.generationsService.record({
+        userId,
+        projectId,
+        title: params.title,
+        sourceType: params.sourceType,
+        sourceRef: params.sourceRef,
+        scenarioCount: 0,
+        durationMs: Date.now() - start,
+        status: GenerationStatus.FAILED,
+        errorMessage: error instanceof Error ? error.message : 'Üretim hatası',
+      });
+      throw error;
+    }
+
+    const generation = await this.generationsService.record({
+      userId,
+      projectId,
+      title: params.title,
+      sourceType: params.sourceType,
+      sourceRef: params.sourceRef,
+      scenarioCount: scenarios.length,
+      durationMs: Date.now() - start,
+      status:
+        scenarios.length === 0
+          ? GenerationStatus.WARNING
+          : GenerationStatus.SUCCESS,
+    });
+
+    return {
+      scenarios,
+      input: params.input,
+      sourceType: params.sourceType,
+      sourceRef: params.sourceRef,
+      generationId: generation.id,
     };
+  }
+
+  // Serbest metinden kisa bir baslik turetir (ilk satir / ~60 karakter).
+  private deriveTitle(input: string): string {
+    const firstLine = input.split('\n')[0].trim();
+    const base = firstLine.length > 0 ? firstLine : input.trim();
+    return base.length > 60 ? `${base.slice(0, 57)}...` : base;
   }
 
   async convertToBdd(
@@ -194,7 +257,39 @@ export class ScenariosService {
       saved.push(record);
     }
 
+    if (saved.length > 0) {
+      await this.touchGroupAndProject(request.groupId, group.projectId);
+      if (request.generationId) {
+        await this.generationsService.incrementSaved(
+          request.generationId,
+          userId,
+          saved.length,
+        );
+      }
+    }
+
     return saved;
+  }
+
+  // Senaryo ekleme/silme, parent grup ve projenin @updatedAt'ini otomatik
+  // tetiklemez (Prisma sadece ilgili satir yazilinca gunceller). Bu yuzden
+  // senaryo aktivitesinden sonra grup ve projeyi acikca "dokunuyoruz" ki
+  // "son guncelleme" degerleri gercek aktiviteyi yansitsin.
+  private async touchGroupAndProject(
+    groupId: string,
+    projectId: string,
+  ): Promise<void> {
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.scenarioGroup.update({
+        where: { id: groupId },
+        data: { updatedAt: now },
+      }),
+      this.prisma.project.update({
+        where: { id: projectId },
+        data: { updatedAt: now },
+      }),
+    ]);
   }
 
   private buildJiraInput(issue: {
@@ -228,8 +323,9 @@ export class ScenariosService {
   }
 
   async remove(id: string, userId: string): Promise<{ message: string }> {
-    await this.findOne(id, userId);
+    const scenario = await this.findOne(id, userId);
     await this.prisma.testScenario.delete({ where: { id } });
+    await this.touchGroupAndProject(scenario.group.id, scenario.project.id);
     return { message: 'Senaryo silindi' };
   }
 
@@ -438,6 +534,10 @@ export class ScenariosService {
       }
 
       results.push(resultItem);
+    }
+
+    if (results.some((r) => r.savedId)) {
+      await this.touchGroupAndProject(request.groupId, group.projectId);
     }
 
     return { totalRows: rows.length, successCount, failureCount, results };

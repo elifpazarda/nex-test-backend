@@ -86,6 +86,20 @@ src/
         jira.response.ts     # JiraAuthUrlResponse, JiraConnectionResponse, JiraIssueResponse
       jira.service.ts        # Atlassian OAuth 2.0, Jira REST client, ADF → plain text
       jira.controller.ts     # OAuth + connection endpointleri
+    generations/
+      models/
+        generation.request.ts   # GenerationListQuery (pagination + sourceType + search)
+        generation.response.ts  # GenerationResponse, GenerationStatsResponse
+      generations.service.ts    # AI uretim gecmisi kaydi (record), korunan sayisi, liste, istatistik
+      generations.controller.ts # /generations liste + /generations/stats
+    scm-webhooks/
+      models/
+        scm-webhook.request.ts   # CreateScmConnectionRequest, GithubWebhookPayload (gevsek tip)
+        scm-webhook.response.ts  # ScmConnectionResponse, ScmConnectionCreatedResponse, WebhookAckResponse
+      guards/
+        scm-webhook.guard.ts     # URL'deki UUID baglantisini bulur, secret'i cozer, X-Hub-Signature-256 dogrular (gecersizse 401)
+      scm-webhooks.service.ts    # Baglanti CRUD (secret uret/sifrele), inbound GitHub event kaydi, idempotency
+      scm-webhooks.controller.ts # /v1/scm-webhooks (JWT management) + /v1/scm-webhooks/github/:uuid (public, imza korumali)
 ```
 
 ## API Endpointleri
@@ -126,6 +140,12 @@ Tum endpointler `/api` prefix'i altinda.
 | GET | /api/jira/callback | - | Atlassian OAuth callback (browser redirect) |
 | GET | /api/jira/connection | JWT | Jira baglanti bilgisi |
 | DELETE | /api/jira/connection | JWT | Jira baglantisini sil |
+| GET | /api/generations | JWT | AI uretim gecmisi (paginated, sourceType + search filtresi) |
+| GET | /api/generations/stats | JWT | Uretim ozet istatistikleri (haftalik/onay/bugun/basari) |
+| POST | /api/v1/scm-webhooks | JWT | SCM webhook baglantisi olustur (UUID + secret doner, secret bir kez) |
+| GET | /api/v1/scm-webhooks | JWT | Kullanicinin webhook baglantilari (secret haric) |
+| DELETE | /api/v1/scm-webhooks/:connectionId | JWT | Webhook baglantisini sil |
+| POST | /api/v1/scm-webhooks/github/:connectionId | HMAC imza | GitHub webhook'u karsilar, imza dogrular, ScmWebhookEvent kaydeder |
 
 ## Kodlama Standartlari
 
@@ -188,6 +208,6 @@ Font eksikse `/api/scenarios/export?format=pdf` endpoint'i hata doner.
 
 - Schema: `prisma/schema.prisma`
 - Config: `prisma.config.ts` (Prisma 7 - URL burada tanimlaniyor)
-- Modeller: User, Project, ScenarioGroup, TestScenario
-- Enum: ScenarioGroupType (BUG, FEATURE, REGRESSION, SMOKE, INTEGRATION, E2E, PERFORMANCE, OTHER)
+- Modeller: User, Project, ScenarioGroup, TestScenario, Generation, JiraConnection, ScmWebhookConnection, ScmWebhookEvent
+- Enum: ScenarioGroupType (BUG, FEATURE, REGRESSION, SMOKE, INTEGRATION, E2E, PERFORMANCE, OTHER), GenerationStatus (SUCCESS, WARNING, FAILED)
 - Schema degisikliginde `prisma generate` otomatik calisir (hook)

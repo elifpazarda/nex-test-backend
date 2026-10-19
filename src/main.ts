@@ -7,7 +7,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { formatValidationErrors } from './common/utils/validation-messages.util';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: GitHub webhook imza dogrulamasi (HMAC) icin ham istek govdesi gerekir
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.useGlobalPipes(
     new ValidationPipe({

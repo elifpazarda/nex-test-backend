@@ -35,15 +35,19 @@ Tum endpointler JWT korumalidir. Generate ve convert-bdd endpointlerinde rate li
 ## Akis
 
 ```
-Generate (uret, kaydetmez):
+Generate (senaryo kaydetmez, ama uretim run'ini kaydeder):
   GenerateFromTextRequest → proje sahiplik kontrolu
-    → AiService.generateTestScenario(input) → scenarios
-    → GenerateScenarioResponse doner
+    → runGeneration(): AI cagrisi sureyle olculur
+    → GenerationsService.record(...) ile bir Generation run'i yazilir
+      (sure, durum: SUCCESS/WARNING/FAILED, uretilen senaryo sayisi)
+    → GenerateScenarioResponse doner (scenarios + generationId)
 
 Save (kaydet):
   SaveScenariosRequest (groupId) → grup sahiplik kontrolu
     → group.projectId ile projectId derive edilir
     → DB'ye TestScenario olarak kaydet → ScenarioResponse[] doner
+    → generationId verilirse GenerationsService.incrementSaved() ile
+      ilgili run'in "korunan senaryo" (onay orani) sayisi artirilir
 
 FindByGroup (paginated):
   → ScenarioGroupsService.findOne() ile yetki kontrolu
@@ -65,4 +69,5 @@ Export:
 - **ProjectsModule**: `ProjectsService` — proje sahiplik kontrolu
 - **JiraModule**: `JiraService` — Jira issue verisi cekme
 - **ScenarioGroupsModule**: `ScenarioGroupsService` — grup sahiplik kontrolu, save/import icin groupId dogrulama
+- **GenerationsModule**: `GenerationsService` — uretim run'i kaydi (record) ve korunan senaryo sayisi (incrementSaved)
 - **PrismaService**: DB erisimi

@@ -13,6 +13,9 @@ export interface GenerateScenarioResponse {
   input: string;
   sourceType: string;
   sourceRef?: string;
+  // Bu uretim calistirmasinin kimligi. Save sirasinda geri gonderilirse
+  // "korunan senaryo" (onay orani) hesabi icin run'a baglanir.
+  generationId: string;
 }
 
 export interface CodeGenerationItem {

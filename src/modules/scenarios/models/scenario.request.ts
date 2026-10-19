@@ -46,6 +46,11 @@ export class GenerateFromTextRequest {
   @MinLength(10)
   @MaxLength(2000)
   input: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
 }
 
 export class GenerateFromJiraRequest {
@@ -56,12 +61,22 @@ export class GenerateFromJiraRequest {
   @IsString()
   @IsNotEmpty()
   issueKey: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
 }
 
 export class GenerateFromFileRequest {
   @IsString()
   @IsNotEmpty()
   projectId: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
 }
 
 export class ImportExcelRequest {
@@ -174,6 +189,12 @@ export class SaveScenariosRequest {
   @IsString()
   @IsOptional()
   sourceRef?: string;
+
+  // Uretim calistirmasinin kimligi (generate response'undan gelir). Verilirse
+  // korunan senaryo sayisi ilgili run'a islenir (onay orani hesabi).
+  @IsString()
+  @IsOptional()
+  generationId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

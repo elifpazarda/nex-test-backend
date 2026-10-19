@@ -10,6 +10,8 @@ import { ScenariosModule } from './modules/scenarios/scenarios.module';
 import { AiModule } from './modules/ai/ai.module';
 import { JiraModule } from './modules/jira/jira.module';
 import { ScenarioGroupsModule } from './modules/scenario-groups/scenario-groups.module';
+import { GenerationsModule } from './modules/generations/generations.module';
+import { ScmWebhooksModule } from './modules/scm-webhooks/scm-webhooks.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { ScenarioGroupsModule } from './modules/scenario-groups/scenario-groups.
     AiModule,
     JiraModule,
     ScenarioGroupsModule,
+    GenerationsModule,
+    ScmWebhooksModule,
   ],
   providers: [
     {
