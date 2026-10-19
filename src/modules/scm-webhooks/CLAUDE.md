@@ -29,6 +29,9 @@ public'tir ama `ScmWebhookGuard` (baglanti secret'i ile HMAC-SHA256) korur.
 |--------|----------|------|----------|
 | POST | /v1/scm-webhooks | JWT | Baglanti olustur — UUID + secret doner (secret yalnizca burada). Opsiyonel: `autoGenerate`, `targetGroupId` |
 | GET | /v1/scm-webhooks | JWT | Kullanicinin baglantilari (secret haric) |
+| GET | /v1/scm-webhooks/:connectionId/events | JWT | Baglantinin webhook event gecmisi (paginated, status/eventType filtresi) |
+| PATCH | /v1/scm-webhooks/:connectionId | JWT | Ayarlari guncelle (label/active/autoGenerate/targetGroupId) |
+| POST | /v1/scm-webhooks/:connectionId/rotate-secret | JWT | Secret'i yenile — yeni secret bir kez doner |
 | DELETE | /v1/scm-webhooks/:connectionId | JWT | Baglanti sil |
 | POST | /v1/scm-webhooks/github/:connectionId | HMAC imza | Inbound GitHub webhook |
 
@@ -81,6 +84,12 @@ Otomatik uretim (ack sonrasi, ASENKRON — fire-and-forget):
   `sourceType: "webhook"` ile bir `Generation` run'i olusur.
 - Maliyet kontrolu: yalnizca whitelist event/action + `autoGenerate` acik baglantilarda uretir.
 - `ScmWebhookEvent.status`: RECEIVED → PROCESSED | SKIPPED | FAILED (+`error`).
+- **pull_request** girdisine, payload'da bulunan degisiklik metadata'si eklenir
+  (dal: head→base, "N dosya (+add/-del), M commit"). **Degisen dosya ADLARI
+  payload'da gelmez** — onun icin GitHub API token'i gerekir (ileride).
+- PATCH'te nihai `autoGenerate=true` ise nihai `targetGroupId` dolu olmalidir (yoksa 400).
+- `rotate-secret` sonrasi eski secret ile gelen imzalar artik gecersizdir (401);
+  GitHub webhook ayarindaki Secret de guncellenmelidir.
 
 ## Kritik Detaylar
 

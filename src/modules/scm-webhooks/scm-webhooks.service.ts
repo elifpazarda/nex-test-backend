@@ -10,13 +10,17 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoUtil } from '../../common/utils/crypto.util';
 import { ScenariosService } from '../scenarios/scenarios.service';
+import { PaginatedResponse } from '../../common/models/pagination';
 import {
   CreateScmConnectionRequest,
   GithubWebhookPayload,
+  ScmWebhookEventListQuery,
+  UpdateScmConnectionRequest,
 } from './models/scm-webhook.request';
 import {
   ScmConnectionCreatedResponse,
   ScmConnectionResponse,
+  ScmWebhookEventResponse,
   WebhookAckResponse,
 } from './models/scm-webhook.response';
 
@@ -158,6 +162,91 @@ export class ScmWebhooksService {
     return rows.map((r) => this.toResponse(r));
   }
 
+  // Baglanti ayarlarini gunceller. Nihai autoGenerate=true ise nihai
+  // targetGroupId dolu olmali; targetGroupId degisirse projectId gruptan turer.
+  async updateConnection(
+    userId: string,
+    connectionId: string,
+    dto: UpdateScmConnectionRequest,
+  ): Promise<ScmConnectionResponse> {
+    const existing = await this.prisma.scmWebhookConnection.findFirst({
+      where: { id: connectionId, userId },
+      select: { autoGenerate: true, targetGroupId: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Webhook baglantisi bulunamadı');
+    }
+
+    const data: Prisma.ScmWebhookConnectionUpdateInput = {};
+    if (dto.label !== undefined) data.label = dto.label;
+    if (dto.active !== undefined) data.active = dto.active;
+
+    let targetGroupId = existing.targetGroupId;
+    if (dto.targetGroupId !== undefined) {
+      const projectId = await this.assertGroupOwnership(dto.targetGroupId, userId);
+      data.targetGroup = { connect: { id: dto.targetGroupId } };
+      data.project = { connect: { id: projectId } };
+      targetGroupId = dto.targetGroupId;
+    }
+
+    const autoGenerate = dto.autoGenerate ?? existing.autoGenerate;
+    if (dto.autoGenerate !== undefined) data.autoGenerate = dto.autoGenerate;
+    if (autoGenerate && !targetGroupId) {
+      throw new BadRequestException(
+        'autoGenerate açıkken targetGroupId zorunludur',
+      );
+    }
+
+    const row = await this.prisma.scmWebhookConnection.update({
+      where: { id: connectionId },
+      data,
+      select: {
+        id: true,
+        provider: true,
+        label: true,
+        active: true,
+        autoGenerate: true,
+        targetGroupId: true,
+        projectId: true,
+        createdAt: true,
+      },
+    });
+    return this.toResponse(row);
+  }
+
+  // Baglantinin secret'ini yeniler ve yeni degeri (yalnizca burada) acik doner.
+  async rotateSecret(
+    userId: string,
+    connectionId: string,
+  ): Promise<ScmConnectionCreatedResponse> {
+    const existing = await this.prisma.scmWebhookConnection.findFirst({
+      where: { id: connectionId, userId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Webhook baglantisi bulunamadı');
+    }
+
+    const secret = randomBytes(32).toString('hex');
+    const row = await this.prisma.scmWebhookConnection.update({
+      where: { id: connectionId },
+      data: { secret: CryptoUtil.encrypt(secret) },
+      select: {
+        id: true,
+        provider: true,
+        label: true,
+        active: true,
+        autoGenerate: true,
+        targetGroupId: true,
+        projectId: true,
+        createdAt: true,
+      },
+    });
+
+    this.logger.log(`SCM webhook secret yenilendi: ${connectionId}`);
+    return { ...this.toResponse(row), secret };
+  }
+
   async deleteConnection(
     userId: string,
     connectionId: string,
@@ -169,6 +258,56 @@ export class ScmWebhooksService {
       throw new NotFoundException('Webhook baglantisi bulunamadı');
     }
     return { deleted: true };
+  }
+
+  // Bir baglantinin webhook event gecmisini (payload haric) paginated doner.
+  // Once baglanti sahipligi dogrulanir.
+  async listEvents(
+    userId: string,
+    connectionId: string,
+    query: ScmWebhookEventListQuery,
+  ): Promise<PaginatedResponse<ScmWebhookEventResponse>> {
+    const conn = await this.prisma.scmWebhookConnection.findFirst({
+      where: { id: connectionId, userId },
+      select: { id: true },
+    });
+    if (!conn) {
+      throw new NotFoundException('Webhook baglantisi bulunamadı');
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const where = {
+      connectionId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.eventType ? { eventType: query.eventType } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.scmWebhookEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          provider: true,
+          eventType: true,
+          action: true,
+          deliveryId: true,
+          sourceRef: true,
+          status: true,
+          error: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.scmWebhookEvent.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   // Imzasi dogrulanmis bir GitHub event'ini kaydeder. Ayni teslimat (delivery)
@@ -244,7 +383,31 @@ export class ScmWebhooksService {
     const body = (node?.body ?? '').trim();
     if (!title && !body) return null;
 
-    const input = `# ${title}\n\n${body}`.trim();
+    let input = `# ${title}\n\n${body}`.trim();
+
+    // pull_request: payload'da bulunan degisiklik metadata'sini girdiye ekle
+    // (dosya adlari payload'da gelmez — onun icin GitHub API token'i gerekir).
+    if (type === 'pull_request') {
+      const pr = payload?.pull_request;
+      const meta: string[] = [];
+      if (pr?.head?.ref || pr?.base?.ref) {
+        meta.push(`- Dal: ${pr?.head?.ref ?? '?'} → ${pr?.base?.ref ?? '?'}`);
+      }
+      if (
+        pr?.changed_files !== undefined ||
+        pr?.additions !== undefined ||
+        pr?.deletions !== undefined ||
+        pr?.commits !== undefined
+      ) {
+        meta.push(
+          `- Degisiklik: ${pr?.changed_files ?? 0} dosya (+${pr?.additions ?? 0}/-${pr?.deletions ?? 0}), ${pr?.commits ?? 0} commit`,
+        );
+      }
+      if (meta.length > 0) {
+        input = `${input}\n\n## PR Bilgisi\n${meta.join('\n')}`;
+      }
+    }
+
     const ref = `${repo}#${node?.number ?? '?'}`;
     const heading = `${ref} · ${title || '(basliksiz)'}`;
     return {

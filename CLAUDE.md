@@ -144,6 +144,9 @@ Tum endpointler `/api` prefix'i altinda.
 | GET | /api/generations/stats | JWT | Uretim ozet istatistikleri (haftalik/onay/bugun/basari) |
 | POST | /api/v1/scm-webhooks | JWT | SCM webhook baglantisi olustur (UUID + secret doner, secret bir kez) |
 | GET | /api/v1/scm-webhooks | JWT | Kullanicinin webhook baglantilari (secret haric) |
+| GET | /api/v1/scm-webhooks/:connectionId/events | JWT | Baglantinin webhook event gecmisi (paginated, status/eventType filtresi) |
+| PATCH | /api/v1/scm-webhooks/:connectionId | JWT | Baglanti ayarlarini guncelle (label/active/autoGenerate/targetGroupId) |
+| POST | /api/v1/scm-webhooks/:connectionId/rotate-secret | JWT | Secret'i yenile (yeni secret bir kez doner) |
 | DELETE | /api/v1/scm-webhooks/:connectionId | JWT | Webhook baglantisini sil |
 | POST | /api/v1/scm-webhooks/github/:connectionId | HMAC imza | GitHub webhook'u karsilar, imza dogrular, ScmWebhookEvent kaydeder |
 

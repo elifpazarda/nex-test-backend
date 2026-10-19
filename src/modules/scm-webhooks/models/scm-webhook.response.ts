@@ -22,3 +22,16 @@ export interface WebhookAckResponse {
   eventId: string;
   eventType: string;
 }
+
+// Kaydedilmis bir webhook event'inin liste gorunumu (payload haric).
+export interface ScmWebhookEventResponse {
+  id: string;
+  provider: string;
+  eventType: string;
+  action: string | null;
+  deliveryId: string | null;
+  sourceRef: string | null;
+  status: string;
+  error: string | null;
+  createdAt: Date;
+}
