@@ -17,5 +17,6 @@ import { GenerationsModule } from '../generations/generations.module';
   ],
   providers: [ScenariosService],
   controllers: [ScenariosController],
+  exports: [ScenariosService],
 })
 export class ScenariosModule {}

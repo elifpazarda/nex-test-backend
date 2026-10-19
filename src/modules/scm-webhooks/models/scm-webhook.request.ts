@@ -1,4 +1,10 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 // SCM webhook baglantisi olusturma istegi (JWT korumali management endpoint).
 export class CreateScmConnectionRequest {
@@ -14,6 +20,16 @@ export class CreateScmConnectionRequest {
   @IsOptional()
   @IsString()
   projectId?: string;
+
+  // Uygun event'lerde (issues/pull_request opened|edited) otomatik senaryo uret.
+  @IsOptional()
+  @IsBoolean()
+  autoGenerate?: boolean;
+
+  // autoGenerate acikken zorunlu: uretilen senaryolarin yazilacagi grup.
+  @IsOptional()
+  @IsString()
+  targetGroupId?: string;
 }
 
 // GitHub webhook payload'u genis ve event'e gore degiskendir; yalnizca
@@ -24,8 +40,22 @@ export interface GithubRepository {
   html_url?: string;
 }
 
+export interface GithubIssue {
+  number?: number;
+  title?: string;
+  body?: string | null;
+}
+
+export interface GithubPullRequest {
+  number?: number;
+  title?: string;
+  body?: string | null;
+}
+
 export interface GithubWebhookPayload {
   action?: string;
   repository?: GithubRepository;
+  issue?: GithubIssue;
+  pull_request?: GithubPullRequest;
   [key: string]: unknown;
 }

@@ -42,6 +42,13 @@ Generate (senaryo kaydetmez, ama uretim run'ini kaydeder):
       (sure, durum: SUCCESS/WARNING/FAILED, uretilen senaryo sayisi)
     → GenerateScenarioResponse doner (scenarios + generationId)
 
+Generate + Save (oturumsuz, webhook icin — generateAndSaveToGroup):
+  (userId, groupId, {input, sourceType, sourceRef, title})
+    → grup sahipligi dogrulanir (projectId gruptan turer)
+    → runGeneration (AI + Generation run) → uretilen senaryolar save() ile gruba yazilir
+    → { generationId, scenarioCount, savedCount } doner
+    → ScmWebhooksModule tarafindan otomatik uretimde kullanilir (ScenariosService export edilir)
+
 Save (kaydet):
   SaveScenariosRequest (groupId) → grup sahiplik kontrolu
     → group.projectId ile projectId derive edilir

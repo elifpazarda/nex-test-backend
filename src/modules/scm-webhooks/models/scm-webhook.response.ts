@@ -4,6 +4,8 @@ export interface ScmConnectionResponse {
   provider: string;
   label: string | null;
   active: boolean;
+  autoGenerate: boolean;
+  targetGroupId: string | null;
   projectId: string | null;
   webhookUrl: string;
   createdAt: Date;

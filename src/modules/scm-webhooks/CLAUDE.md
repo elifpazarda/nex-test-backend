@@ -27,7 +27,7 @@ public'tir ama `ScmWebhookGuard` (baglanti secret'i ile HMAC-SHA256) korur.
 
 | Method | Endpoint | Auth | Aciklama |
 |--------|----------|------|----------|
-| POST | /v1/scm-webhooks | JWT | Baglanti olustur — UUID + secret doner (secret yalnizca burada) |
+| POST | /v1/scm-webhooks | JWT | Baglanti olustur — UUID + secret doner (secret yalnizca burada). Opsiyonel: `autoGenerate`, `targetGroupId` |
 | GET | /v1/scm-webhooks | JWT | Kullanicinin baglantilari (secret haric) |
 | DELETE | /v1/scm-webhooks/:connectionId | JWT | Baglanti sil |
 | POST | /v1/scm-webhooks/github/:connectionId | HMAC imza | Inbound GitHub webhook |
@@ -58,9 +58,29 @@ Inbound (public):
         HMAC uyusmazligi          → 401 (timingSafeEqual)
     → service.recordGithubEvent:
         ayni X-GitHub-Delivery daha once geldiyse → mevcut kaydi doner (idempotency)
-        aksi halde ScmWebhookEvent olusturur
-    → 200 { received:true, eventId, eventType }
+        aksi halde ScmWebhookEvent olusturur (status=RECEIVED)
+    → 200 { received:true, eventId, eventType }   ← HEMEN doner
+
+Otomatik uretim (ack sonrasi, ASENKRON — fire-and-forget):
+  Kosul: eventType ∈ {issues, pull_request} ve action ∈ {opened, edited}
+         ve connection.autoGenerate=true ve connection.targetGroupId dolu
+    → buildGenerationInput(payload): issue/PR title+body → input, "{repo}#{num}" → sourceRef
+        icerik yoksa → event.status=SKIPPED
+    → ScenariosService.generateAndSaveToGroup(userId, targetGroupId, {...}):
+        AI uretir + senaryolari gruba TestScenario olarak kaydeder + Generation run'i yazar
+    → basari → event.status=PROCESSED ; hata → event.status=FAILED (+error)
+  Uygun olmayan event (or autoGenerate kapali) → sadece kayit, uretim yok
 ```
+
+## Otomatik Senaryo Uretimi (autoGenerate)
+
+- Baglanti olustururken `autoGenerate: true` + `targetGroupId` verilir (autoGenerate acikken
+  targetGroupId **zorunlu**, aksi halde 400). targetGroup sahipligi dogrulanir; projectId gruptan turer.
+- Uygun event geldiginde uretim **asenkron** calisir — webhook yaniti (200) AI'yi beklemez.
+- Uretilen senaryolar `targetGroupId` grubuna `TestScenario` olarak kaydedilir; ayrica
+  `sourceType: "webhook"` ile bir `Generation` run'i olusur.
+- Maliyet kontrolu: yalnizca whitelist event/action + `autoGenerate` acik baglantilarda uretir.
+- `ScmWebhookEvent.status`: RECEIVED → PROCESSED | SKIPPED | FAILED (+`error`).
 
 ## Kritik Detaylar
 

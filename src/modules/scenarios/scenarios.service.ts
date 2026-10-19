@@ -271,6 +271,52 @@ export class ScenariosService {
     return saved;
   }
 
+  // Oturumsuz akislar (webhook gibi) icin: senaryoyu uretir VE dogrudan hedef
+  // gruba kaydeder. runGeneration (AI + Generation run kaydi) ile save'i birlestirir;
+  // grup sahipligi scenarioGroupsService.findOne ile dogrulanir.
+  async generateAndSaveToGroup(
+    userId: string,
+    groupId: string,
+    params: {
+      input: string;
+      sourceType: string;
+      sourceRef?: string;
+      title: string;
+    },
+  ): Promise<{ generationId: string; scenarioCount: number; savedCount: number }> {
+    const group = await this.scenarioGroupsService.findOne(groupId, userId);
+
+    const gen = await this.runGeneration(userId, group.projectId, params);
+    if (gen.scenarios.length === 0) {
+      return { generationId: gen.generationId, scenarioCount: 0, savedCount: 0 };
+    }
+
+    const saved = await this.save(
+      {
+        groupId,
+        input: gen.input,
+        sourceType: params.sourceType,
+        sourceRef: params.sourceRef,
+        generationId: gen.generationId,
+        scenarios: gen.scenarios.map((s) => ({
+          title: s.title,
+          category: s.category,
+          priority: s.priority,
+          preconditions: s.preconditions,
+          steps: s.steps,
+          expectedResult: s.expectedResult,
+        })),
+      } as SaveScenariosRequest,
+      userId,
+    );
+
+    return {
+      generationId: gen.generationId,
+      scenarioCount: gen.scenarios.length,
+      savedCount: saved.length,
+    };
+  }
+
   // Senaryo ekleme/silme, parent grup ve projenin @updatedAt'ini otomatik
   // tetiklemez (Prisma sadece ilgili satir yazilinca gunceller). Bu yuzden
   // senaryo aktivitesinden sonra grup ve projeyi acikca "dokunuyoruz" ki
